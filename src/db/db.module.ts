@@ -14,6 +14,8 @@ import { MongooseModule } from '@nestjs/mongoose';
         connectTimeoutMS: 5000,
         socketTimeoutMS: 10000,
         maxPoolSize: 10,
+        // Content is critical; boot must fail instead of retrying for ~27s.
+        retryAttempts: 0,
         autoIndex: configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),
