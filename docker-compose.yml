@@ -1,0 +1,18 @@
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: ecom-cms-mongo
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:27018:27017'
+    volumes:
+      - ecom-cms-mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  ecom-cms-mongo-data:
