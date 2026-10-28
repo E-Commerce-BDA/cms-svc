@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ecom/contracts':
-        specifier: file:..\ecom-contracts\ecom-contracts-1.0.0.tgz
-        version: file:../ecom-contracts/ecom-contracts-1.0.0.tgz(zod@4.6.7)
+        specifier: file:..\ecom-contracts\ecom-contracts-1.1.0.tgz
+        version: file:../ecom-contracts/ecom-contracts-1.1.0.tgz(zod@4.6.7)
       '@nestjs/common':
         specifier: ^12.0.1
         version: 12.2.0(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
@@ -41,6 +41,9 @@ importers:
       joi:
         specifier: ^18.3.0
         version: 18.3.0
+      kafkajs:
+        specifier: ^2.2.4
+        version: 2.2.4
       mongoose:
         specifier: ^8.24.7
         version: 8.24.7(supports-color@7.2.0)
@@ -148,9 +151,9 @@ packages:
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
 
-  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.0.0.tgz':
-    resolution: {integrity: sha512-XwLqtMkfxtWMUhB6/N81JCoXo2zTV6vLK5lZ0fb3FgUi5ufTNOUJtru1ytJoYuJ/W3/Q4eWWCWKiQDH8UTloIA==, tarball: file:../ecom-contracts/ecom-contracts-1.0.0.tgz}
-    version: 1.0.0
+  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.1.0.tgz':
+    resolution: {integrity: sha512-2uEysGLPJgvVqZjBnYM/aIrGy5ORbuz6sVaKs7YNlq/CUJn1DikVLOgO5T3tcl/YW6FuZhMCswceolTqb6BNGg==, tarball: file:../ecom-contracts/ecom-contracts-1.1.0.tgz}
+    version: 1.1.0
     engines: {node: '>=22'}
     peerDependencies:
       zod: '>=4 <5'
@@ -1278,6 +1281,10 @@ packages:
   jws@4.0.1:
     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
 
+  kafkajs@2.2.4:
+    resolution: {integrity: sha512-j/YeapB1vfPT2iOIUn/vxdyKEuhuY2PxMBvf5JWux6iSaukAccrMtXEY/Lb7OvavDhOWME589bpLrEdnVHjfjA==}
+    engines: {node: '>=14.0.0'}
+
   kareem@2.6.3:
     resolution: {integrity: sha512-C3iHfuGUXK2u8/ipq9LfjFfXFxAZMQJJq7vLS45r3D9Y2xQ/m4S8zaR4zMLFWh9AsNPXmcFfUDhTEO8UIC/V6Q==}
     engines: {node: '>=12.0.0'}
@@ -2000,7 +2007,7 @@ snapshots:
   '@colors/colors@1.5.0':
     optional: true
 
-  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.0.0.tgz(zod@4.6.7)':
+  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.1.0.tgz(zod@4.6.7)':
     dependencies:
       zod: 4.6.7
 
@@ -3004,6 +3011,8 @@ snapshots:
     dependencies:
       jwa: 2.0.1
       safe-buffer: 5.2.1
+
+  kafkajs@2.2.4: {}
 
   kareem@2.6.3: {}
 

@@ -35,7 +35,7 @@ describe('EventsService', () => {
 
     const events = bus.getEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].topic).toBe('blog.events');
+    expect(events[0].topic).toBe('blog.updated');
     expect(events[0].event.eventType).toBe('blog.updated');
   });
 

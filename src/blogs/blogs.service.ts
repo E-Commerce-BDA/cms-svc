@@ -291,6 +291,12 @@ export class BlogsService {
         blogId: blogPayload.id,
         slug: dto.slug,
         status: 'published',
+        title: blogPayload.title,
+        excerpt: blogPayload.excerpt,
+        coverUrl: blogPayload.coverUrl ?? undefined,
+        publishedAt: blogPayload.publishedAt ?? undefined,
+        updatedAt: blogPayload.updatedAt,
+        categoryId: blogPayload.categoryId ?? undefined,
       });
     }
 
@@ -357,6 +363,12 @@ export class BlogsService {
         blogId: blogPayload.id,
         slug: blog.slug,
         status: blog.status,
+        title: blogPayload.title,
+        excerpt: blogPayload.excerpt,
+        coverUrl: blogPayload.coverUrl ?? undefined,
+        publishedAt: blogPayload.publishedAt ?? undefined,
+        updatedAt: blogPayload.updatedAt,
+        categoryId: blogPayload.categoryId ?? undefined,
       });
     }
 

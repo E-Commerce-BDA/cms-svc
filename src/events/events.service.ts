@@ -33,13 +33,13 @@ export class EventsService {
   async publishBlogUpdated(payload: BlogUpdatedPayload): Promise<void> {
     const envelope: EventEnvelope = {
       id: randomUUID(),
-      topic: 'blog.events',
+      topic: 'blog.updated',
       eventType: 'blog.updated',
       producer: 'cms-svc',
       timestamp: new Date().toISOString(),
       payload: { ...payload },
     };
-    await this.eventBus.publish('blog.events', envelope);
+    await this.eventBus.publish('blog.updated', envelope, payload.blogId);
   }
 
   async publishResizeImageJob(payload: ResizeImageJob): Promise<void> {

@@ -5,17 +5,24 @@ import type { IEventBus } from './event-bus/event-bus.interface.js';
 @Injectable()
 export class InMemoryEventBus implements IEventBus {
   private readonly logger = new Logger(InMemoryEventBus.name);
-  private readonly publishedEvents: { topic: string; event: EventEnvelope }[] =
-    [];
+  private readonly publishedEvents: {
+    topic: string;
+    event: EventEnvelope;
+    key?: string;
+  }[] = [];
 
-  async publish(topic: string, event: EventEnvelope): Promise<void> {
+  async publish(
+    topic: string,
+    event: EventEnvelope,
+    key?: string,
+  ): Promise<void> {
     this.logger.debug(
-      `[${topic}] Published event ${event.eventType} id=${event.id}`,
+      `[${topic}] Published event ${event.eventType} id=${event.id} (key: ${key ?? 'none'})`,
     );
-    this.publishedEvents.push({ topic, event });
+    this.publishedEvents.push({ topic, event, key });
   }
 
-  getEvents(): { topic: string; event: EventEnvelope }[] {
+  getEvents(): { topic: string; event: EventEnvelope; key?: string }[] {
     return [...this.publishedEvents];
   }
 

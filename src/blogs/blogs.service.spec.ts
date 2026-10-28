@@ -394,11 +394,14 @@ describe('BlogsService', () => {
       const res = await service.createBlog(dto);
       expect(res.status).toBe('published');
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith({
-        blogId: '507f1f77bcf86cd799439021',
-        slug: 'live-post',
-        status: 'published',
-      });
+      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blogId: '507f1f77bcf86cd799439021',
+          slug: 'live-post',
+          status: 'published',
+          title: 'Live Post',
+        }),
+      );
     });
 
     it('updates blog to published, sets publishedAt, invalidates cache, and emits blog.updated', async () => {
@@ -451,11 +454,14 @@ describe('BlogsService', () => {
       expect(res.status).toBe('published');
       expect(doc.save).toHaveBeenCalled();
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith({
-        blogId: '507f1f77bcf86cd799439021',
-        slug: 'live-post',
-        status: 'published',
-      });
+      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blogId: '507f1f77bcf86cd799439021',
+          slug: 'live-post',
+          status: 'published',
+          title: 'Live Post Updated',
+        }),
+      );
     });
 
     it('deletes published blog, invalidates cache, and emits blog.updated with draft status', async () => {
