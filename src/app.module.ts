@@ -7,6 +7,9 @@ import { AuthModule } from './auth/auth.module.js';
 import { RevisionModule } from './revision/revision.module.js';
 import { CacheModule } from './cache/cache.module.js';
 import { EventsModule } from './events/events.module.js';
+import { SectionsModule } from './sections/sections.module.js';
+import { SettingsModule } from './settings/settings.module.js';
+import { NavigationModule } from './navigation/navigation.module.js';
 
 @Module({
   imports: [
@@ -23,6 +26,9 @@ import { EventsModule } from './events/events.module.js';
     RevisionModule,
     CacheModule,
     EventsModule,
+    SectionsModule,
+    SettingsModule,
+    NavigationModule,
   ],
 })
 export class AppModule {}
