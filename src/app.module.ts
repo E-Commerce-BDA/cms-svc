@@ -12,6 +12,7 @@ import { SettingsModule } from './settings/settings.module.js';
 import { NavigationModule } from './navigation/navigation.module.js';
 import { PagesModule } from './pages/pages.module.js';
 import { BlogsModule } from './blogs/blogs.module.js';
+import { MediaModule } from './media/media.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { BlogsModule } from './blogs/blogs.module.js';
     NavigationModule,
     PagesModule,
     BlogsModule,
+    MediaModule,
   ],
 })
 export class AppModule {}
