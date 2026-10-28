@@ -491,11 +491,71 @@ describe('BlogsService', () => {
 
       await service.deleteBlog('507f1f77bcf86cd799439021');
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith({
-        blogId: '507f1f77bcf86cd799439021',
+      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blogId: '507f1f77bcf86cd799439021',
+          slug: 'live-post',
+          status: 'draft',
+        }),
+      );
+    });
+
+    it('updates published blog to draft, invalidates cache, and emits blog.updated with draft status', async () => {
+      const doc = {
+        _id: '507f1f77bcf86cd799439021',
         slug: 'live-post',
+        title: 'Live Post',
+        content: [],
+        categoryId: '507f1f77bcf86cd799439020',
+        status: 'published',
+        publishedAt: new Date('2026-10-28T00:00:00.000Z'),
+        save: vi.fn().mockResolvedValue(undefined),
+        toObject: vi.fn().mockReturnValue({
+          _id: '507f1f77bcf86cd799439021',
+          slug: 'live-post',
+          title: 'Live Post',
+          content: [],
+          categoryId: '507f1f77bcf86cd799439020',
+          status: 'draft',
+          publishedAt: new Date('2026-10-28T00:00:00.000Z'),
+        }),
+      };
+
+      const blogModel = {
+        findOne: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(doc),
+        }),
+      };
+      const eventsService = {
+        publishBlogUpdated: vi.fn().mockResolvedValue(undefined),
+      };
+      const cacheService = {
+        blogSlugKey: vi.fn().mockReturnValue('cms:blog:live-post'),
+        del: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new BlogsService(
+        blogModel as never,
+        {} as never,
+        cacheService as never,
+        eventsService as never,
+      );
+
+      const update: UpdateBlog = {
         status: 'draft',
-      });
+      };
+
+      const res = await service.updateBlog('507f1f77bcf86cd799439021', update);
+      expect(res.status).toBe('draft');
+      expect(doc.save).toHaveBeenCalled();
+      expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
+      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blogId: '507f1f77bcf86cd799439021',
+          slug: 'live-post',
+          status: 'draft',
+        }),
+      );
     });
   });
 });

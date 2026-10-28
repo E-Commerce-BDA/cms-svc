@@ -358,7 +358,7 @@ export class BlogsService {
 
     await this.cacheService.del(this.cacheService.blogSlugKey(blog.slug));
 
-    if (blog.status === 'published') {
+    if (blog.status === 'published' || blog.status === 'draft') {
       await this.eventsService.publishBlogUpdated({
         blogId: blogPayload.id,
         slug: blog.slug,
@@ -396,10 +396,32 @@ export class BlogsService {
     await this.cacheService.del(this.cacheService.blogSlugKey(deleted.slug));
 
     if (deleted.status === 'published') {
+      const deletedObj = deleted.toObject
+        ? (deleted.toObject() as BlogDocumentLike)
+        : (deleted as unknown as BlogDocumentLike);
+      const updatedAtStr =
+        deletedObj.updatedAt instanceof Date
+          ? deletedObj.updatedAt.toISOString()
+          : typeof deletedObj.updatedAt === 'string'
+            ? deletedObj.updatedAt
+            : new Date().toISOString();
+      const publishedAtStr =
+        deletedObj.publishedAt instanceof Date
+          ? deletedObj.publishedAt.toISOString()
+          : typeof deletedObj.publishedAt === 'string'
+            ? deletedObj.publishedAt
+            : undefined;
+
       await this.eventsService.publishBlogUpdated({
         blogId: String(deleted._id),
         slug: deleted.slug,
         status: 'draft',
+        title: deleted.title ?? deleted.slug,
+        excerpt: deleted.excerpt ?? undefined,
+        coverUrl: deleted.coverUrl ?? undefined,
+        publishedAt: publishedAtStr,
+        updatedAt: updatedAtStr,
+        categoryId: deleted.categoryId ? String(deleted.categoryId) : undefined,
       });
     }
   }
