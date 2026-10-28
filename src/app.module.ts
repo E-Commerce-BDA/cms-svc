@@ -4,6 +4,9 @@ import { envValidationSchema } from './config/env.validation.js';
 import { HealthModule } from './health/health.module.js';
 import { DbModule } from './db/db.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { RevisionModule } from './revision/revision.module.js';
+import { CacheModule } from './cache/cache.module.js';
+import { EventsModule } from './events/events.module.js';
 
 @Module({
   imports: [
@@ -17,6 +20,9 @@ import { AuthModule } from './auth/auth.module.js';
     DbModule,
     AuthModule,
     HealthModule,
+    RevisionModule,
+    CacheModule,
+    EventsModule,
   ],
 })
 export class AppModule {}
