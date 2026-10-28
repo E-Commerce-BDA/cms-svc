@@ -1,0 +1,64 @@
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
+import type { NavResponse, NavSettings } from '@ecom/contracts';
+import { CacheService } from '../cache/cache.service.js';
+import { EventsService } from '../events/events.service.js';
+import { RevisionService } from '../revision/revision.service.js';
+import {
+  NavigationModel,
+  type NavigationDocument,
+} from './navigation.schema.js';
+
+@Injectable()
+export class NavigationService {
+  constructor(
+    @InjectModel(NavigationModel.name)
+    private readonly navModel: Model<NavigationDocument>,
+    private readonly revisionService: RevisionService,
+    private readonly cacheService: CacheService,
+    private readonly eventsService: EventsService,
+  ) {}
+
+  async getNavigation(): Promise<NavResponse> {
+    const cacheKey = this.cacheService.navigationKey();
+    const cached = await this.cacheService.get<NavResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const doc = await this.navModel
+      .findOne({ scope: 'navbar' })
+      .lean()
+      .exec();
+
+    const version = await this.revisionService.getVersion();
+    const response: NavResponse = {
+      navbar: (doc?.navbar as NavSettings) ?? {},
+      version,
+    };
+
+    await this.cacheService.set(cacheKey, response);
+    return response;
+  }
+
+  async updateNavigation(navbar: NavSettings): Promise<NavResponse> {
+    await this.navModel
+      .findOneAndUpdate(
+        { scope: 'navbar' },
+        { $set: { navbar } },
+        { upsert: true, returnDocument: 'after' },
+      )
+      .exec();
+
+    const version = await this.revisionService.bumpVersion();
+    await this.cacheService.del(this.cacheService.navigationKey());
+
+    await this.eventsService.publishCmsUpdated({
+      scope: 'navigation',
+      version,
+    });
+
+    return { navbar, version };
+  }
+}
