@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ecom/contracts':
+        specifier: file:..\ecom-contracts\ecom-contracts-1.0.0.tgz
+        version: file:../ecom-contracts/ecom-contracts-1.0.0.tgz(zod@4.6.7)
       '@nestjs/common':
         specifier: ^12.0.1
         version: 12.2.0(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
@@ -47,6 +50,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@nestjs/cli':
         specifier: ^12.0.0
@@ -60,6 +66,9 @@ importers:
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
+      '@types/multer':
+        specifier: ^2.3.0
+        version: 2.3.0
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -138,6 +147,13 @@ packages:
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
+
+  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.0.0.tgz':
+    resolution: {integrity: sha512-XwLqtMkfxtWMUhB6/N81JCoXo2zTV6vLK5lZ0fb3FgUi5ufTNOUJtru1ytJoYuJ/W3/Q4eWWCWKiQDH8UTloIA==, tarball: file:../ecom-contracts/ecom-contracts-1.0.0.tgz}
+    version: 1.0.0
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: '>=4 <5'
 
   '@hapi/address@5.1.1':
     resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
@@ -742,6 +758,9 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
+
+  '@types/multer@2.3.0':
+    resolution: {integrity: sha512-i7STIm9V4K2MPH4ZYMtrZAwNxs3kglk2LgleaTuB9pUXgADBcQYQuYMd7+6xgTIxfoggIkFA/DkkvycdZpIARA==}
 
   '@types/node@24.19.2':
     resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
@@ -1926,6 +1945,9 @@ packages:
     resolution: {integrity: sha512-xYqdZFUK/VYazNl/oCDYN+3WloWQwMfZxBoiNt6qNyk+xfOdi598muWE42rNZFp1kNOiqW936q5RhUdnpqElSg==}
     engines: {node: '>=18'}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
 snapshots:
 
   '@angular-devkit/core@22.2.3(chokidar@5.0.0)':
@@ -1977,6 +1999,10 @@ snapshots:
 
   '@colors/colors@1.5.0':
     optional: true
+
+  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.0.0.tgz(zod@4.6.7)':
+    dependencies:
+      zod: 4.6.7
 
   '@hapi/address@5.1.1':
     dependencies:
@@ -2436,6 +2462,10 @@ snapshots:
   '@types/methods@1.1.4': {}
 
   '@types/ms@2.1.0': {}
+
+  '@types/multer@2.3.0':
+    dependencies:
+      '@types/express': 5.0.6
 
   '@types/node@24.19.2':
     dependencies:
@@ -3568,3 +3598,5 @@ snapshots:
   wrappy@1.0.2: {}
 
   yoctocolors@2.2.0: {}
+
+  zod@4.6.7: {}
