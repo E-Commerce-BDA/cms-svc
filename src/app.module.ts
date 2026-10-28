@@ -10,6 +10,8 @@ import { EventsModule } from './events/events.module.js';
 import { SectionsModule } from './sections/sections.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { NavigationModule } from './navigation/navigation.module.js';
+import { PagesModule } from './pages/pages.module.js';
+import { BlogsModule } from './blogs/blogs.module.js';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { NavigationModule } from './navigation/navigation.module.js';
     SectionsModule,
     SettingsModule,
     NavigationModule,
+    PagesModule,
+    BlogsModule,
   ],
 })
 export class AppModule {}
