@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { mediaKeySchema } from '@ecom/contracts';
 import {
   InvalidMediaKeyError,
@@ -16,7 +16,7 @@ function isContained(baseDir: string, candidate: string): boolean {
 }
 
 @Injectable()
-export class LocalDiskStorageAdapter implements StoragePort {
+export class LocalDiskStorageAdapter implements StoragePort, OnModuleInit {
   private readonly logger = new Logger(LocalDiskStorageAdapter.name);
   private readonly baseDir: string;
 
@@ -24,6 +24,30 @@ export class LocalDiskStorageAdapter implements StoragePort {
     this.baseDir = path.resolve(
       process.env.STORAGE_LOCAL_DIR ?? path.resolve(process.cwd(), 'storage'),
     );
+  }
+
+  /**
+   * A relative `STORAGE_LOCAL_DIR` resolves against the process CWD, so the
+   * same deployment writes to different roots depending on where it was
+   * started; an unwritable root would only surface on the first upload. Both
+   * are boot failures: the container must not come up pretending to store.
+   */
+  async onModuleInit(): Promise<void> {
+    const configured = process.env.STORAGE_LOCAL_DIR?.trim();
+    if (configured && !path.isAbsolute(configured)) {
+      throw new Error(
+        `STORAGE_LOCAL_DIR must be an absolute path, received '${configured}'`,
+      );
+    }
+
+    try {
+      await fs.promises.mkdir(this.baseDir, { recursive: true });
+      await fs.promises.access(this.baseDir, fs.constants.W_OK);
+    } catch (error) {
+      throw new Error(
+        `STORAGE_LOCAL_DIR is not a writable directory: '${this.baseDir}' (${(error as Error).message})`,
+      );
+    }
   }
 
   async resolvePath(key: string): Promise<string> {
