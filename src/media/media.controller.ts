@@ -14,6 +14,7 @@ import {
   Req,
   Res,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -32,7 +33,10 @@ import {
   JwtAuthGuard,
 } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { MediaTooLargeFilter } from './filters/media-too-large.filter.js';
+import { UploadSizeGuard } from './guards/upload-size.guard.js';
 import {
+  MAX_FILE_SIZE_BYTES,
   MediaService,
   type StreamableMediaFile,
   type UploadedMediaFile,
@@ -51,9 +55,24 @@ export class MediaController {
 
   @Post('admin/media')
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // Auth first: an anonymous caller never gets to probe the size limit.
+  @UseGuards(JwtAuthGuard, RolesGuard, UploadSizeGuard)
   @Roles('admin')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseFilters(MediaTooLargeFilter)
+  // No `storage` option means multer's memory engine, which is what we want:
+  // the buffer is sniffed, and `fileSize` is the backstop behind the header
+  // guard for a chunked request that sends no `Content-Length`.
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: MAX_FILE_SIZE_BYTES,
+        files: 1,
+        fields: 8,
+        parts: 12,
+        fieldSize: 8 * 1024,
+      },
+    }),
+  )
   async uploadMedia(
     @UploadedFile() file: UploadedMediaFile | undefined,
     @Body('usage') usage?: string,
