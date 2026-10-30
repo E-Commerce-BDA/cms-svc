@@ -20,8 +20,8 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "typecheck": "tsc --noEmit",
-    "db:up": "docker compose up -d mongo",
-    "db:down": "docker compose down"
+    "db:up": "docker compose -f ../ecom-infra/docker-compose.yml up -d mongo",
+    "db:down": "docker compose -f ../ecom-infra/docker-compose.yml stop mongo"
   },
   "dependencies": {
     "@ecom/contracts": "file:..\\ecom-contracts\\ecom-contracts-1.7.0.tgz",

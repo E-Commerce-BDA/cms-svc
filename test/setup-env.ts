@@ -1,8 +1,12 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+// directConnection=true: the local mongod is a single-node replica set whose
+// member advertises `mongo:27017`, a name only the Docker network can resolve.
+// Without the flag the driver fails with "getaddrinfo ENOTFOUND mongo".
 const testMongoUri =
-  process.env.MONGODB_TEST_URI ?? 'mongodb://127.0.0.1:27018/ecom_cms_test';
+  process.env.MONGODB_TEST_URI ??
+  'mongodb://127.0.0.1:27018/ecom_cms_test?directConnection=true';
 
 if (!/\/ecom_cms_test(?:\?|$)/.test(testMongoUri)) {
   throw new Error(
