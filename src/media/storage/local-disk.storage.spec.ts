@@ -115,4 +115,62 @@ describe('LocalDiskStorageAdapter', () => {
       false,
     );
   });
+
+  describe('onModuleInit', () => {
+    it('rejects a relative STORAGE_LOCAL_DIR before touching the disk', async () => {
+      process.env.STORAGE_LOCAL_DIR = 'relative/storage';
+      const relative = new LocalDiskStorageAdapter();
+
+      await expect(relative.onModuleInit()).rejects.toThrow(
+        /must be an absolute path/,
+      );
+    });
+
+    it('creates a missing nested root', async () => {
+      const nested = path.join(baseDir, 'nested', 'deep');
+      process.env.STORAGE_LOCAL_DIR = nested;
+      const adapter = new LocalDiskStorageAdapter();
+
+      await adapter.onModuleInit();
+
+      expect(fs.existsSync(nested)).toBe(true);
+    });
+
+    it('rejects a root that cannot be created', async () => {
+      // A file where a directory is expected fails the same way on every OS.
+      const blocker = path.join(baseDir, 'blocker');
+      await fs.promises.writeFile(blocker, 'not a directory');
+      process.env.STORAGE_LOCAL_DIR = path.join(blocker, 'child');
+      const adapter = new LocalDiskStorageAdapter();
+
+      await expect(adapter.onModuleInit()).rejects.toThrow(
+        /not a writable directory/,
+      );
+    });
+
+    it('rejects a root the process cannot write to', async () => {
+      const readOnly = path.join(baseDir, 'read-only');
+      await fs.promises.mkdir(readOnly, { recursive: true });
+      try {
+        await fs.promises.chmod(readOnly, 0o500);
+      } catch {
+        return;
+      }
+      // Windows ignores the mode bits; nothing was made unwritable, so there is
+      // nothing for the adapter to refuse.
+      try {
+        await fs.promises.access(readOnly, fs.constants.W_OK);
+        return;
+      } catch {
+        // The OS honoured the mode: assert the rejection below.
+      }
+
+      process.env.STORAGE_LOCAL_DIR = readOnly;
+      const adapter = new LocalDiskStorageAdapter();
+
+      await expect(adapter.onModuleInit()).rejects.toThrow(
+        /not a writable directory/,
+      );
+    });
+  });
 });
