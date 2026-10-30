@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -9,6 +10,16 @@ import {
   MediaService,
   type UploadedMediaFile,
 } from './media.service.js';
+
+/** The same 45-byte 1x1 PNG the media e2e suites upload. */
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
+  0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
+  0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44,
+  0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d,
+  0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42,
+  0x60, 0x82,
+]);
 
 describe('MediaService', () => {
   const sampleMediaDoc = {
@@ -29,8 +40,8 @@ describe('MediaService', () => {
     originalname: 'hero.png',
     encoding: '7bit',
     mimetype: 'image/png',
-    size: 2048,
-    buffer: Buffer.from('fake-image-bytes'),
+    size: PNG_BYTES.length,
+    buffer: PNG_BYTES,
   };
 
   describe('uploadMedia', () => {
@@ -70,7 +81,7 @@ describe('MediaService', () => {
       );
     });
 
-    it('rejects files larger than 10 MB', async () => {
+    it('rejects an oversized buffer with 413 MEDIA_TOO_LARGE', async () => {
       const service = new MediaService(
         {} as never,
         {} as never,
@@ -82,12 +93,63 @@ describe('MediaService', () => {
 
       const largeFile = {
         ...sampleFile,
-        size: MAX_FILE_SIZE_BYTES + 1,
+        size: 1,
+        buffer: Buffer.concat([
+          PNG_BYTES,
+          Buffer.alloc(MAX_FILE_SIZE_BYTES + 1 - PNG_BYTES.length),
+        ]),
       };
 
       await expect(service.uploadMedia(largeFile)).rejects.toThrow(
+        PayloadTooLargeException,
+      );
+      await expect(service.uploadMedia(largeFile)).rejects.toMatchObject({
+        response: { code: 'MEDIA_TOO_LARGE' },
+      });
+    });
+
+    it('rejects a non-image body declared as an image (bytes win)', async () => {
+      const service = new MediaService(
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+
+      const textFile = {
+        ...sampleFile,
+        originalname: 'notes.png',
+        buffer: Buffer.from('this is not an image'),
+      };
+
+      await expect(service.uploadMedia(textFile)).rejects.toThrow(
         BadRequestException,
       );
+      await expect(service.uploadMedia(textFile)).rejects.toMatchObject({
+        response: { code: 'MEDIA_TYPE_UNSUPPORTED' },
+      });
+    });
+
+    it('rejects PNG bytes declared as image/jpeg with MEDIA_TYPE_MISMATCH', async () => {
+      const service = new MediaService(
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+
+      const lyingFile = { ...sampleFile, mimetype: 'image/jpeg' };
+
+      await expect(service.uploadMedia(lyingFile)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.uploadMedia(lyingFile)).rejects.toMatchObject({
+        response: { code: 'MEDIA_TYPE_MISMATCH' },
+      });
     });
 
     it('saves file, persists document, publishes resize job, and returns payload', async () => {
