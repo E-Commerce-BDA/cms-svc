@@ -397,7 +397,7 @@ export class BlogsService {
 
     if (deleted.status === 'published') {
       const deletedObj = deleted.toObject
-        ? (deleted.toObject() as BlogDocumentLike)
+        ? deleted.toObject<BlogDocumentLike>()
         : (deleted as unknown as BlogDocumentLike);
       const updatedAtStr =
         deletedObj.updatedAt instanceof Date

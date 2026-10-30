@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ecom/contracts':
-        specifier: file:..\ecom-contracts\ecom-contracts-1.1.0.tgz
-        version: file:../ecom-contracts/ecom-contracts-1.1.0.tgz(zod@4.6.7)
+        specifier: file:..\ecom-contracts\ecom-contracts-1.5.0.tgz
+        version: file:../ecom-contracts/ecom-contracts-1.5.0.tgz(zod@4.6.7)
       '@nestjs/common':
         specifier: ^12.0.1
         version: 12.2.0(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
@@ -151,9 +151,9 @@ packages:
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
 
-  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.1.0.tgz':
-    resolution: {integrity: sha512-2uEysGLPJgvVqZjBnYM/aIrGy5ORbuz6sVaKs7YNlq/CUJn1DikVLOgO5T3tcl/YW6FuZhMCswceolTqb6BNGg==, tarball: file:../ecom-contracts/ecom-contracts-1.1.0.tgz}
-    version: 1.1.0
+  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.5.0.tgz':
+    resolution: {integrity: sha512-wvOv4N9MGbSmoYnAvD0FiaacIt1T3jHO06vwnMVFU7TqBi3/87HxYBCvO55fuZrPgkVHxSw6Fwv0LATF5iCA/A==, tarball: file:../ecom-contracts/ecom-contracts-1.5.0.tgz}
+    version: 1.5.0
     engines: {node: '>=22'}
     peerDependencies:
       zod: '>=4 <5'
@@ -2007,7 +2007,7 @@ snapshots:
   '@colors/colors@1.5.0':
     optional: true
 
-  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.1.0.tgz(zod@4.6.7)':
+  '@ecom/contracts@file:../ecom-contracts/ecom-contracts-1.5.0.tgz(zod@4.6.7)':
     dependencies:
       zod: 4.6.7
 
