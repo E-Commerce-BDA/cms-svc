@@ -49,6 +49,9 @@ lerna-debug.log*
 .temp
 .tmp
 
+# uploaded media (STORAGE_LOCAL_DIR fallback) and the e2e storage roots
+/storage*
+
 # Runtime data
 pids
 *.pid
