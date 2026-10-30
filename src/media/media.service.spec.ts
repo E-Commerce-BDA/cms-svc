@@ -109,7 +109,7 @@ describe('MediaService', () => {
         }),
         delete: vi.fn(),
         exists: vi.fn(),
-        getFilePath: vi.fn(),
+        resolvePath: vi.fn(),
       };
 
       const eventsService = {
@@ -292,7 +292,7 @@ describe('MediaService', () => {
         save: vi.fn(),
         delete: vi.fn().mockResolvedValue(undefined),
         exists: vi.fn(),
-        getFilePath: vi.fn(),
+        resolvePath: vi.fn(),
       };
 
       const service = new MediaService(
@@ -309,6 +309,163 @@ describe('MediaService', () => {
       expect(mediaModel.findByIdAndDelete).toHaveBeenCalledWith(
         sampleMediaDoc._id,
       );
+    });
+  });
+
+  describe('visibility', () => {
+    function serviceWithMediaDoc(doc: unknown, storage: unknown = {}) {
+      const mediaModel = {
+        findOne: vi.fn().mockReturnValue({
+          lean: vi.fn().mockReturnValue({
+            exec: vi.fn().mockResolvedValue(doc),
+          }),
+        }),
+      };
+
+      return new MediaService(
+        mediaModel as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        storage as never,
+        {} as never,
+      );
+    }
+
+    it('rejects an unknown visibility on upload with 400 VALIDATION_FAILED', async () => {
+      const service = new MediaService(
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+
+      await expect(
+        service.uploadMedia(sampleFile, 'section', undefined, undefined, 'secret'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('treats a record without a visibility as public', async () => {
+      const service = serviceWithMediaDoc(sampleMediaDoc);
+      const media = await service.findByKey(sampleMediaDoc.key);
+      expect(media?.visibility).toBe('public');
+    });
+
+    it('filters the admin list by visibility only when it is a real value', async () => {
+      const findMock = vi.fn().mockReturnValue({
+        sort: vi.fn().mockReturnValue({
+          skip: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              lean: vi.fn().mockReturnValue({
+                exec: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          }),
+        }),
+      });
+      const mediaModel = {
+        countDocuments: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(0),
+        }),
+        find: findMock,
+      };
+      const service = new MediaService(
+        mediaModel as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+
+      await service.getAdminMedia(undefined, 1, 20, 'private');
+      expect(findMock).toHaveBeenLastCalledWith({ visibility: 'private' });
+
+      await service.getAdminMedia(undefined, 1, 20, 'secret');
+      expect(findMock).toHaveBeenLastCalledWith({});
+    });
+  });
+
+  describe('streamablePath', () => {
+    const privateDoc = { ...sampleMediaDoc, visibility: 'private' };
+
+    function serviceWithMediaDoc(doc: unknown, resolvePath = vi.fn()) {
+      const mediaModel = {
+        findOne: vi.fn().mockReturnValue({
+          lean: vi.fn().mockReturnValue({
+            exec: vi.fn().mockResolvedValue(doc),
+          }),
+        }),
+      };
+
+      return new MediaService(
+        mediaModel as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        { save: vi.fn(), delete: vi.fn(), exists: vi.fn(), resolvePath } as never,
+        {} as never,
+      );
+    }
+
+    it('serves a public row to the public viewer', async () => {
+      const resolvePath = vi.fn().mockResolvedValue('/srv/storage/banner.webp');
+      const service = serviceWithMediaDoc(sampleMediaDoc, resolvePath);
+
+      await expect(service.streamablePath(sampleMediaDoc.key, 'public')).resolves.toEqual({
+        absolutePath: '/srv/storage/banner.webp',
+        mimeType: 'image/webp',
+      });
+    });
+
+    it('hides a private row from the public viewer without touching storage', async () => {
+      const resolvePath = vi.fn();
+      const service = serviceWithMediaDoc(privateDoc, resolvePath);
+
+      await expect(service.streamablePath(privateDoc.key, 'public')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(resolvePath).not.toHaveBeenCalled();
+    });
+
+    it('serves a private row to the admin viewer', async () => {
+      const resolvePath = vi.fn().mockResolvedValue('/srv/storage/banner.webp');
+      const service = serviceWithMediaDoc(privateDoc, resolvePath);
+
+      await expect(service.streamablePath(privateDoc.key, 'admin')).resolves.toEqual({
+        absolutePath: '/srv/storage/banner.webp',
+        mimeType: 'image/webp',
+      });
+    });
+
+    it('answers not found for an unknown key without touching storage', async () => {
+      const resolvePath = vi.fn();
+      const service = serviceWithMediaDoc(null, resolvePath);
+
+      await expect(service.streamablePath('../etc/passwd', 'admin')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(resolvePath).not.toHaveBeenCalled();
+    });
+
+    it('maps a storage rejection to a generic not-found', async () => {
+      const resolvePath = vi.fn().mockRejectedValue(new Error('EACCES'));
+      const service = serviceWithMediaDoc(sampleMediaDoc, resolvePath);
+
+      await expect(service.streamablePath(sampleMediaDoc.key, 'public')).rejects.toThrow(
+        NotFoundException,
+      );
+
+      try {
+        await service.streamablePath(sampleMediaDoc.key, 'public');
+      } catch (error) {
+        const response = (error as NotFoundException).getResponse() as {
+          message: string;
+        };
+        expect(response.message).toBe('File not found');
+      }
     });
   });
 });
