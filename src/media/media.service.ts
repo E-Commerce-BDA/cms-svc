@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import * as path from 'node:path';
 import {
   BadRequestException,
   ConflictException,
   Inject,
   Injectable,
   NotFoundException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { type FilterQuery, Model, Types } from 'mongoose';
@@ -22,6 +22,7 @@ import { SectionModel, type SectionDocument } from '../sections/section.schema.j
 import { PageModel, type PageDocument } from '../pages/page.schema.js';
 import { BlogModel, type BlogDocument } from '../blogs/blog.schema.js';
 import { MediaModel, type MediaDocument } from './media.schema.js';
+import { sniffImageMimeType } from './media-signature.js';
 import { STORAGE_PORT_TOKEN, type StoragePort } from './storage/storage.port.js';
 
 export const ALLOWED_MIME_TYPES: MediaMimeType[] = [
@@ -32,6 +33,21 @@ export const ALLOWED_MIME_TYPES: MediaMimeType[] = [
 ];
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Multipart boundaries, part headers, and the small text fields (`usage`,
+ * `alt`, `visibility`) travel in the same body as the file. The header guard
+ * allows for them so a legitimate 10 MB upload is not rejected for its
+ * boundary; `limits.fileSize` still measures the file itself.
+ */
+export const MAX_MULTIPART_OVERHEAD_BYTES = 16 * 1024;
+
+const EXTENSION_BY_MIME: Record<MediaMimeType, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+};
 
 /** Who is asking for the bytes: the open file route or the admin one. */
 export type MediaViewer = 'public' | 'admin';
@@ -90,7 +106,7 @@ export class MediaService {
     userId?: string,
     visibility?: string,
   ): Promise<Media> {
-    if (!file || !file.buffer) {
+    if (!file || !file.buffer || file.buffer.length === 0) {
       throw new BadRequestException({
         code: 'VALIDATION_FAILED',
         message: 'No file provided in multipart request',
@@ -99,6 +115,25 @@ export class MediaService {
 
     const validVisibility = this.parseVisibility(visibility);
 
+    // The buffer length is the only size this service trusts: the client's
+    // `size` field is metadata about its own request, not about the bytes.
+    if (file.buffer.length > MAX_FILE_SIZE_BYTES) {
+      throw new PayloadTooLargeException({
+        code: 'MEDIA_TOO_LARGE',
+        message: 'File exceeds maximum allowed size of 10 MB',
+      });
+    }
+
+    // The bytes decide the type. Everything after this point reads `sniffed`,
+    // never the declared header.
+    const sniffed = sniffImageMimeType(file.buffer);
+    if (!sniffed) {
+      throw new BadRequestException({
+        code: 'MEDIA_TYPE_UNSUPPORTED',
+        message: `Unsupported media content. Allowed types: PNG, JPEG, WebP, AVIF.`,
+      });
+    }
+
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype as MediaMimeType)) {
       throw new BadRequestException({
         code: 'MEDIA_TYPE_UNSUPPORTED',
@@ -106,11 +141,10 @@ export class MediaService {
       });
     }
 
-    const fileSize = file.size || file.buffer.length;
-    if (fileSize > MAX_FILE_SIZE_BYTES) {
+    if (file.mimetype !== sniffed) {
       throw new BadRequestException({
-        code: 'MEDIA_TOO_LARGE',
-        message: 'File exceeds maximum allowed size of 10 MB',
+        code: 'MEDIA_TYPE_MISMATCH',
+        message: `Declared media type '${file.mimetype}' does not match the uploaded content (${sniffed})`,
       });
     }
 
@@ -125,20 +159,20 @@ export class MediaService {
       ? (usage as MediaUsage)
       : 'other';
 
-    const ext = this.resolveExtension(file.mimetype, file.originalname);
+    const ext = EXTENSION_BY_MIME[sniffed];
     const now = new Date();
     const year = now.getUTCFullYear();
     const month = String(now.getUTCMonth() + 1).padStart(2, '0');
     const key = `media/${year}/${month}/${randomUUID()}.${ext}`;
 
-    const { url } = await this.storage.save(file.buffer, key, file.mimetype);
+    const { url } = await this.storage.save(file.buffer, key, sniffed);
 
     const mediaDoc = new this.mediaModel({
       key,
       url,
       alt: alt?.trim() || undefined,
-      mimeType: file.mimetype as MediaMimeType,
-      sizeBytes: fileSize,
+      mimeType: sniffed,
+      sizeBytes: file.buffer.length,
       usage: validUsage,
       visibility: validVisibility,
       uploadedBy: userId,
@@ -322,28 +356,6 @@ export class MediaService {
       code: 'MEDIA_NOT_FOUND',
       message: 'File not found',
     });
-  }
-
-  private resolveExtension(mimeType: string, filename?: string): string {
-    switch (mimeType) {
-      case 'image/png':
-        return 'png';
-      case 'image/jpeg':
-        return 'jpg';
-      case 'image/webp':
-        return 'webp';
-      case 'image/avif':
-        return 'avif';
-      default: {
-        if (filename) {
-          const ext = path.extname(filename).toLowerCase().replace('.', '');
-          if (['png', 'jpg', 'jpeg', 'webp', 'avif'].includes(ext)) {
-            return ext === 'jpeg' ? 'jpg' : ext;
-          }
-        }
-        return 'webp';
-      }
-    }
   }
 
   private toMediaPayload(doc: MediaDocumentLike): Media {
