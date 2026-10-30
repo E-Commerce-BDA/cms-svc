@@ -9,11 +9,13 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { type FilterQuery, Model, Types } from 'mongoose';
-import type {
-  Media,
-  MediaListResponse,
-  MediaMimeType,
-  MediaUsage,
+import {
+  mediaVisibilitySchema,
+  type Media,
+  type MediaListResponse,
+  type MediaMimeType,
+  type MediaUsage,
+  type MediaVisibility,
 } from '@ecom/contracts';
 import { EventsService } from '../events/events.service.js';
 import { SectionModel, type SectionDocument } from '../sections/section.schema.js';
@@ -30,6 +32,14 @@ export const ALLOWED_MIME_TYPES: MediaMimeType[] = [
 ];
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/** Who is asking for the bytes: the open file route or the admin one. */
+export type MediaViewer = 'public' | 'admin';
+
+export interface StreamableMediaFile {
+  absolutePath: string;
+  mimeType: MediaMimeType;
+}
 
 export interface UploadedMediaFile {
   fieldname?: string;
@@ -51,6 +61,7 @@ interface MediaDocumentLike {
   mimeType: MediaMimeType;
   sizeBytes: number;
   usage: MediaUsage;
+  visibility?: MediaVisibility;
   uploadedBy?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
@@ -77,6 +88,7 @@ export class MediaService {
     usage?: string,
     alt?: string,
     userId?: string,
+    visibility?: string,
   ): Promise<Media> {
     if (!file || !file.buffer) {
       throw new BadRequestException({
@@ -84,6 +96,8 @@ export class MediaService {
         message: 'No file provided in multipart request',
       });
     }
+
+    const validVisibility = this.parseVisibility(visibility);
 
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype as MediaMimeType)) {
       throw new BadRequestException({
@@ -126,6 +140,7 @@ export class MediaService {
       mimeType: file.mimetype as MediaMimeType,
       sizeBytes: fileSize,
       usage: validUsage,
+      visibility: validVisibility,
       uploadedBy: userId,
     });
 
@@ -149,10 +164,17 @@ export class MediaService {
     usage?: MediaUsage,
     page = 1,
     perPage = 20,
+    visibility?: string,
   ): Promise<MediaListResponse> {
     const safePage = Math.max(1, Number(page) || 1);
     const safePerPage = Math.min(Math.max(1, Number(perPage) || 20), 100);
-    const filter: FilterQuery<MediaModel> = usage ? { usage } : {};
+    const filter: FilterQuery<MediaModel> = {};
+    if (usage) {
+      filter.usage = usage;
+    }
+    if (visibility && mediaVisibilitySchema.safeParse(visibility).success) {
+      filter.visibility = visibility;
+    }
 
     const [total, docs] = await Promise.all([
       this.mediaModel.countDocuments(filter).exec(),
@@ -226,8 +248,80 @@ export class MediaService {
     await this.mediaModel.findByIdAndDelete(media._id).exec();
   }
 
-  getStorage(): StoragePort {
-    return this.storage;
+  async findByKey(key: string): Promise<Media | null> {
+    const doc = await this.mediaModel
+      .findOne({ key })
+      .lean<MediaDocumentLike | null>()
+      .exec();
+    return doc ? this.toMediaPayload(doc) : null;
+  }
+
+  async findById(id: string): Promise<Media | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+
+    const doc = await this.mediaModel
+      .findById(new Types.ObjectId(id))
+      .lean<MediaDocumentLike | null>()
+      .exec();
+    return doc ? this.toMediaPayload(doc) : null;
+  }
+
+  /**
+   * Resolves the bytes for a file route.
+   *
+   * A row the viewer may not see and a row that does not exist answer the same
+   * way, so the public route is never an existence oracle for private assets.
+   * The storage layer is the only source of a path, and it re-checks containment
+   * after resolving symlinks.
+   */
+  async streamablePath(
+    key: string,
+    viewer: MediaViewer,
+  ): Promise<StreamableMediaFile> {
+    const media = await this.findByKey(key);
+    if (!media || (viewer === 'public' && this.visibilityOf(media) !== 'public')) {
+      throw this.mediaNotFound();
+    }
+
+    try {
+      return {
+        absolutePath: await this.storage.resolvePath(media.key),
+        mimeType: media.mimeType,
+      };
+    } catch {
+      // A rejected key, an escape, or a file that is gone are all "not found":
+      // nothing about the storage root reaches the caller.
+      throw this.mediaNotFound();
+    }
+  }
+
+  private parseVisibility(visibility?: string): MediaVisibility {
+    if (visibility === undefined || visibility === '') {
+      return 'public';
+    }
+
+    const parsed = mediaVisibilitySchema.safeParse(visibility);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        code: 'VALIDATION_FAILED',
+        message: `Unsupported visibility '${visibility}'. Allowed values: public, private.`,
+      });
+    }
+
+    return parsed.data;
+  }
+
+  private visibilityOf(media: Media): MediaVisibility {
+    return media.visibility ?? 'public';
+  }
+
+  private mediaNotFound(): NotFoundException {
+    return new NotFoundException({
+      code: 'MEDIA_NOT_FOUND',
+      message: 'File not found',
+    });
   }
 
   private resolveExtension(mimeType: string, filename?: string): string {
@@ -263,6 +357,7 @@ export class MediaService {
       mimeType: doc.mimeType,
       sizeBytes: doc.sizeBytes,
       usage: doc.usage,
+      visibility: doc.visibility ?? 'public',
       uploadedBy: doc.uploadedBy,
       createdAt:
         doc.createdAt instanceof Date

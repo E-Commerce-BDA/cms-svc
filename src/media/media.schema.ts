@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { HydratedDocument } from 'mongoose';
-import type { MediaMimeType, MediaUsage } from '@ecom/contracts';
+import type {
+  MediaMimeType,
+  MediaUsage,
+  MediaVisibility,
+} from '@ecom/contracts';
 
 export type MediaDocument = HydratedDocument<MediaModel>;
 
@@ -39,6 +43,16 @@ export class MediaModel {
     index: true,
   })
   usage: MediaUsage;
+
+  // Documents written before cms-003 have no visibility; they are public.
+  @Prop({
+    type: String,
+    required: false,
+    enum: ['public', 'private'],
+    default: 'public',
+    index: true,
+  })
+  visibility?: MediaVisibility;
 
   @Prop({ type: String, required: false })
   uploadedBy?: string;
