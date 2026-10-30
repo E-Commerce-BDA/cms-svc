@@ -24,7 +24,7 @@
     "db:down": "docker compose down"
   },
   "dependencies": {
-    "@ecom/contracts": "file:..\\ecom-contracts\\ecom-contracts-1.6.0.tgz",
+    "@ecom/contracts": "file:..\\ecom-contracts\\ecom-contracts-1.7.0.tgz",
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.0.1",
