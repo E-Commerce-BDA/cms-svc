@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import type { NavResponse, NavSettings } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
-import { EventsService } from '../events/events.service.js';
+import { MongoTransactions } from '../db/mongo-tx.js';
+import { CmsOutbox } from '../outbox/cms-outbox.js';
 import { RevisionService } from '../revision/revision.service.js';
 import {
   NavigationModel,
@@ -17,7 +18,8 @@ export class NavigationService {
     private readonly navModel: Model<NavigationDocument>,
     private readonly revisionService: RevisionService,
     private readonly cacheService: CacheService,
-    private readonly eventsService: EventsService,
+    private readonly transactions: MongoTransactions,
+    private readonly outbox: CmsOutbox,
   ) {}
 
   async getNavigation(): Promise<NavResponse> {
@@ -43,21 +45,27 @@ export class NavigationService {
   }
 
   async updateNavigation(navbar: NavSettings): Promise<NavResponse> {
-    await this.navModel
-      .findOneAndUpdate(
-        { scope: 'navbar' },
-        { $set: { navbar } },
-        { upsert: true, returnDocument: 'after' },
-      )
-      .exec();
+    const version = await this.transactions.run(async (session) => {
+      await this.navModel
+        .findOneAndUpdate(
+          { scope: 'navbar' },
+          { $set: { navbar } },
+          { upsert: true, returnDocument: 'after', session },
+        )
+        .exec();
 
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.navigationKey());
+      const bumped = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'navigation',
+        aggregateId: 'navbar',
+        payload: { scope: 'navigation', version: bumped },
+      });
 
-    await this.eventsService.publishCmsUpdated({
-      scope: 'navigation',
-      version,
+      return bumped;
     });
+
+    await this.cacheService.del(this.cacheService.navigationKey());
 
     return { navbar, version };
   }

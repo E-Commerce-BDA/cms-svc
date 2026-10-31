@@ -1,6 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MongoConnectionBinder } from './mongo-connection.js';
+import { MongoTransactions } from './mongo-tx.js';
 
 @Global()
 @Module({
@@ -20,6 +22,7 @@ import { MongooseModule } from '@nestjs/mongoose';
       }),
     }),
   ],
-  exports: [MongooseModule],
+  providers: [MongoConnectionBinder, MongoTransactions],
+  exports: [MongooseModule, MongoTransactions],
 })
 export class DbModule {}

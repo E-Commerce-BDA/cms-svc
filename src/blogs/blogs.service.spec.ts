@@ -1,9 +1,37 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreateBlog, CreateBlogCategory, UpdateBlog } from '@ecom/contracts';
+import type { MongoTransactions } from '../db/mongo-tx.js';
+import type { CmsOutbox } from '../outbox/cms-outbox.js';
 import { BlogsService } from './blogs.service.js';
 
 describe('BlogsService', () => {
+  // cms-005: mutations run inside one Mongo transaction and write `cms_outbox`
+  // instead of publishing through the in-process bus.
+  const fakeSession = { id: 'cms-test-session' } as never;
+  const transactions = {
+    run: <T,>(fn: (session: never) => Promise<T>): Promise<T> => fn(fakeSession),
+  } as unknown as MongoTransactions;
+  const outbox = { record: vi.fn().mockResolvedValue('event-id') };
+
+  const buildService = (
+    blog: any,
+    blogCategory: any,
+    cache: any,
+    _events: unknown,
+  ) =>
+    new BlogsService(
+      blog,
+      blogCategory,
+      cache,
+      transactions,
+      outbox as unknown as CmsOutbox,
+    );
+
+  beforeEach(() => {
+    outbox.record.mockClear();
+  });
+
   const sampleCategory = {
     _id: '507f1f77bcf86cd799439020',
     name: 'Tech & Gadgets',
@@ -47,7 +75,7 @@ describe('BlogsService', () => {
         }),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         {} as never,
         blogCategoryModel as never,
         {} as never,
@@ -67,7 +95,7 @@ describe('BlogsService', () => {
         }),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         {} as never,
         blogCategoryModel as never,
         {} as never,
@@ -96,7 +124,7 @@ describe('BlogsService', () => {
         exec: vi.fn().mockResolvedValue(null),
       });
 
-      const service = new BlogsService(
+      const service = buildService(
         {} as never,
         MockCategoryModel as never,
         {} as never,
@@ -133,7 +161,7 @@ describe('BlogsService', () => {
         findOne: vi.fn(),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
@@ -159,7 +187,7 @@ describe('BlogsService', () => {
         }),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
@@ -188,7 +216,7 @@ describe('BlogsService', () => {
         }),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
@@ -224,7 +252,7 @@ describe('BlogsService', () => {
         }),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         {} as never,
@@ -263,7 +291,7 @@ describe('BlogsService', () => {
         find: findMock,
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         blogCategoryModel as never,
         {} as never,
@@ -319,7 +347,7 @@ describe('BlogsService', () => {
       const eventsService = { publishBlogUpdated: vi.fn() };
       const cacheService = { del: vi.fn() };
 
-      const service = new BlogsService(
+      const service = buildService(
         MockBlogModel as never,
         {} as never,
         cacheService as never,
@@ -336,7 +364,8 @@ describe('BlogsService', () => {
 
       const res = await service.createBlog(dto);
       expect(res.status).toBe('draft');
-      expect(eventsService.publishBlogUpdated).not.toHaveBeenCalled();
+      // A draft is not visible to consumers, so nothing is announced.
+      expect(outbox.record).not.toHaveBeenCalled();
     });
 
     it('creates published blog, invalidates cache, and emits blog.updated', async () => {
@@ -376,7 +405,7 @@ describe('BlogsService', () => {
         del: vi.fn().mockResolvedValue(undefined),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         MockBlogModel as never,
         {} as never,
         cacheService as never,
@@ -394,12 +423,17 @@ describe('BlogsService', () => {
       const res = await service.createBlog(dto);
       expect(res.status).toBe('published');
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+      expect(outbox.record).toHaveBeenCalledWith(
+        fakeSession,
         expect.objectContaining({
-          blogId: '507f1f77bcf86cd799439021',
-          slug: 'live-post',
-          status: 'published',
-          title: 'Live Post',
+          topic: 'blog.updated',
+          aggregateId: '507f1f77bcf86cd799439021',
+          payload: expect.objectContaining({
+            blogId: '507f1f77bcf86cd799439021',
+            slug: 'live-post',
+            status: 'published',
+            title: 'Live Post',
+          }),
         }),
       );
     });
@@ -438,7 +472,7 @@ describe('BlogsService', () => {
         del: vi.fn().mockResolvedValue(undefined),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
@@ -454,12 +488,17 @@ describe('BlogsService', () => {
       expect(res.status).toBe('published');
       expect(doc.save).toHaveBeenCalled();
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+      expect(outbox.record).toHaveBeenCalledWith(
+        fakeSession,
         expect.objectContaining({
-          blogId: '507f1f77bcf86cd799439021',
-          slug: 'live-post',
-          status: 'published',
-          title: 'Live Post Updated',
+          topic: 'blog.updated',
+          aggregateId: '507f1f77bcf86cd799439021',
+          payload: expect.objectContaining({
+            blogId: '507f1f77bcf86cd799439021',
+            slug: 'live-post',
+            status: 'published',
+            title: 'Live Post Updated',
+          }),
         }),
       );
     });
@@ -467,10 +506,13 @@ describe('BlogsService', () => {
     it('deletes published blog, invalidates cache, and emits blog.updated with draft status', async () => {
       const blogModel = {
         findOneAndDelete: vi.fn().mockReturnValue({
-          exec: vi.fn().mockResolvedValue({
-            _id: '507f1f77bcf86cd799439021',
-            slug: 'live-post',
-            status: 'published',
+          // The delete joins the transaction, so the service chains `.session()`.
+          session: vi.fn().mockReturnValue({
+            exec: vi.fn().mockResolvedValue({
+              _id: '507f1f77bcf86cd799439021',
+              slug: 'live-post',
+              status: 'published',
+            }),
           }),
         }),
       };
@@ -482,7 +524,7 @@ describe('BlogsService', () => {
         del: vi.fn().mockResolvedValue(undefined),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
@@ -491,11 +533,16 @@ describe('BlogsService', () => {
 
       await service.deleteBlog('507f1f77bcf86cd799439021');
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+      expect(outbox.record).toHaveBeenCalledWith(
+        fakeSession,
         expect.objectContaining({
-          blogId: '507f1f77bcf86cd799439021',
-          slug: 'live-post',
-          status: 'draft',
+          topic: 'blog.updated',
+          payload: expect.objectContaining({
+            blogId: '507f1f77bcf86cd799439021',
+            slug: 'live-post',
+            // A deleted post is announced as a draft.
+            status: 'draft',
+          }),
         }),
       );
     });
@@ -534,7 +581,7 @@ describe('BlogsService', () => {
         del: vi.fn().mockResolvedValue(undefined),
       };
 
-      const service = new BlogsService(
+      const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
@@ -549,11 +596,16 @@ describe('BlogsService', () => {
       expect(res.status).toBe('draft');
       expect(doc.save).toHaveBeenCalled();
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
-      expect(eventsService.publishBlogUpdated).toHaveBeenCalledWith(
+      expect(outbox.record).toHaveBeenCalledWith(
+        fakeSession,
         expect.objectContaining({
-          blogId: '507f1f77bcf86cd799439021',
-          slug: 'live-post',
-          status: 'draft',
+          topic: 'blog.updated',
+          aggregateId: '507f1f77bcf86cd799439021',
+          payload: expect.objectContaining({
+            blogId: '507f1f77bcf86cd799439021',
+            slug: 'live-post',
+            status: 'draft',
+          }),
         }),
       );
     });

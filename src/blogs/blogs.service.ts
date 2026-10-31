@@ -17,7 +17,8 @@ import type {
   UpdateBlog,
 } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
-import { EventsService } from '../events/events.service.js';
+import { MongoTransactions } from '../db/mongo-tx.js';
+import { CmsOutbox } from '../outbox/cms-outbox.js';
 import {
   BlogCategoryModel,
   type BlogCategoryDocument,
@@ -57,7 +58,8 @@ export class BlogsService {
     @InjectModel(BlogCategoryModel.name)
     private readonly blogCategoryModel: Model<BlogCategoryDocument>,
     private readonly cacheService: CacheService,
-    private readonly eventsService: EventsService,
+    private readonly transactions: MongoTransactions,
+    private readonly outbox: CmsOutbox,
   ) {}
 
   async getPublicCategories(): Promise<BlogCategory[]> {
@@ -279,25 +281,34 @@ export class BlogsService {
       seo: dto.seo ?? {},
     });
 
-    await created.save();
+    const blogPayload = await this.transactions.run(async (session) => {
+      await created.save({ session });
 
-    const blogPayload = this.toBlogPayload(
-      created.toObject<BlogDocumentLike>(),
-    );
+      const payload = this.toBlogPayload(created.toObject<BlogDocumentLike>());
+
+      if (dto.status === 'published') {
+        await this.outbox.record(session, {
+          topic: 'blog.updated',
+          aggregateId: payload.id,
+          payload: {
+            blogId: payload.id,
+            slug: dto.slug,
+            status: 'published',
+            title: payload.title,
+            excerpt: payload.excerpt,
+            coverUrl: payload.coverUrl ?? undefined,
+            publishedAt: payload.publishedAt ?? undefined,
+            updatedAt: payload.updatedAt,
+            categoryId: payload.categoryId ?? undefined,
+          },
+        });
+      }
+
+      return payload;
+    });
 
     if (dto.status === 'published') {
       await this.cacheService.del(this.cacheService.blogSlugKey(dto.slug));
-      await this.eventsService.publishBlogUpdated({
-        blogId: blogPayload.id,
-        slug: dto.slug,
-        status: 'published',
-        title: blogPayload.title,
-        excerpt: blogPayload.excerpt,
-        coverUrl: blogPayload.coverUrl ?? undefined,
-        publishedAt: blogPayload.publishedAt ?? undefined,
-        updatedAt: blogPayload.updatedAt,
-        categoryId: blogPayload.categoryId ?? undefined,
-      });
     }
 
     return blogPayload;
@@ -352,78 +363,100 @@ export class BlogsService {
         : null;
     }
 
-    await blog.save();
+    const blogPayload = await this.transactions.run(async (session) => {
+      await blog.save({ session });
 
-    const blogPayload = this.toBlogPayload(blog.toObject<BlogDocumentLike>());
+      const payload = this.toBlogPayload(blog.toObject<BlogDocumentLike>());
+
+      if (blog.status === 'published' || blog.status === 'draft') {
+        await this.outbox.record(session, {
+          topic: 'blog.updated',
+          aggregateId: payload.id,
+          payload: {
+            blogId: payload.id,
+            slug: blog.slug,
+            status: blog.status,
+            title: payload.title,
+            excerpt: payload.excerpt,
+            coverUrl: payload.coverUrl ?? undefined,
+            publishedAt: payload.publishedAt ?? undefined,
+            updatedAt: payload.updatedAt,
+            categoryId: payload.categoryId ?? undefined,
+          },
+        });
+      }
+
+      return payload;
+    });
 
     await this.cacheService.del(this.cacheService.blogSlugKey(blog.slug));
-
-    if (blog.status === 'published' || blog.status === 'draft') {
-      await this.eventsService.publishBlogUpdated({
-        blogId: blogPayload.id,
-        slug: blog.slug,
-        status: blog.status,
-        title: blogPayload.title,
-        excerpt: blogPayload.excerpt,
-        coverUrl: blogPayload.coverUrl ?? undefined,
-        publishedAt: blogPayload.publishedAt ?? undefined,
-        updatedAt: blogPayload.updatedAt,
-        categoryId: blogPayload.categoryId ?? undefined,
-      });
-    }
 
     return blogPayload;
   }
 
   async deleteBlog(id: string): Promise<void> {
     const isObjectId = Types.ObjectId.isValid(id);
-    const deleted = await this.blogModel
-      .findOneAndDelete({
-        $or: [
-          ...(isObjectId ? [{ _id: new Types.ObjectId(id) }] : []),
-          { slug: id },
-        ],
-      })
-      .exec();
 
-    if (!deleted) {
-      throw new NotFoundException({
-        code: 'BLOG_NOT_FOUND',
-        message: `Blog '${id}' not found`,
-      });
-    }
+    const deletedSlug = await this.transactions.run(async (session) => {
+      const deleted = await this.blogModel
+        .findOneAndDelete({
+          $or: [
+            ...(isObjectId ? [{ _id: new Types.ObjectId(id) }] : []),
+            { slug: id },
+          ],
+        })
+        .session(session)
+        .exec();
 
-    await this.cacheService.del(this.cacheService.blogSlugKey(deleted.slug));
+      if (!deleted) {
+        throw new NotFoundException({
+          code: 'BLOG_NOT_FOUND',
+          message: `Blog '${id}' not found`,
+        });
+      }
 
-    if (deleted.status === 'published') {
-      const deletedObj = deleted.toObject
-        ? deleted.toObject<BlogDocumentLike>()
-        : (deleted as unknown as BlogDocumentLike);
-      const updatedAtStr =
-        deletedObj.updatedAt instanceof Date
-          ? deletedObj.updatedAt.toISOString()
-          : typeof deletedObj.updatedAt === 'string'
-            ? deletedObj.updatedAt
-            : new Date().toISOString();
-      const publishedAtStr =
-        deletedObj.publishedAt instanceof Date
-          ? deletedObj.publishedAt.toISOString()
-          : typeof deletedObj.publishedAt === 'string'
-            ? deletedObj.publishedAt
-            : undefined;
+      if (deleted.status === 'published') {
+        const deletedObj = deleted.toObject
+          ? deleted.toObject<BlogDocumentLike>()
+          : (deleted as unknown as BlogDocumentLike);
+        const updatedAtStr =
+          deletedObj.updatedAt instanceof Date
+            ? deletedObj.updatedAt.toISOString()
+            : typeof deletedObj.updatedAt === 'string'
+              ? deletedObj.updatedAt
+              : new Date().toISOString();
+        const publishedAtStr =
+          deletedObj.publishedAt instanceof Date
+            ? deletedObj.publishedAt.toISOString()
+            : typeof deletedObj.publishedAt === 'string'
+              ? deletedObj.publishedAt
+              : undefined;
 
-      await this.eventsService.publishBlogUpdated({
-        blogId: String(deleted._id),
-        slug: deleted.slug,
-        status: 'draft',
-        title: deleted.title ?? deleted.slug,
-        excerpt: deleted.excerpt ?? undefined,
-        coverUrl: deleted.coverUrl ?? undefined,
-        publishedAt: publishedAtStr,
-        updatedAt: updatedAtStr,
-        categoryId: deleted.categoryId ? String(deleted.categoryId) : undefined,
-      });
-    }
+        // A deleted post is announced as `draft`: consumers remove it from
+        // search and listings, and the slug may be reused.
+        await this.outbox.record(session, {
+          topic: 'blog.updated',
+          aggregateId: String(deleted._id),
+          payload: {
+            blogId: String(deleted._id),
+            slug: deleted.slug,
+            status: 'draft',
+            title: deleted.title ?? deleted.slug,
+            excerpt: deleted.excerpt ?? undefined,
+            coverUrl: deleted.coverUrl ?? undefined,
+            publishedAt: publishedAtStr,
+            updatedAt: updatedAtStr,
+            categoryId: deleted.categoryId
+              ? String(deleted.categoryId)
+              : undefined,
+          },
+        });
+      }
+
+      return deleted.slug as string;
+    });
+
+    await this.cacheService.del(this.cacheService.blogSlugKey(deletedSlug));
   }
 
   private toBlogCategoryPayload(

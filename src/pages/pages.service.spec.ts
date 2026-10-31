@@ -1,9 +1,38 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreatePage, Page, UpdatePage } from '@ecom/contracts';
+import type { MongoTransactions } from '../db/mongo-tx.js';
+import type { CmsOutbox } from '../outbox/cms-outbox.js';
 import { PagesService } from './pages.service.js';
 
 describe('PagesService', () => {
+  // cms-005: every mutation runs inside one Mongo transaction and writes its
+  // event to `cms_outbox`. These doubles keep the existing cases focused on
+  // what the service returns; the event assertions below read `outbox.record`.
+  const fakeSession = { id: 'cms-test-session' } as never;
+  const transactions = {
+    run: <T,>(fn: (session: never) => Promise<T>): Promise<T> => fn(fakeSession),
+  } as unknown as MongoTransactions;
+  const outbox = { record: vi.fn().mockResolvedValue('event-id') };
+
+  const buildService = (
+    model: any,
+    revision: any,
+    cache: any,
+    _events: unknown,
+  ) =>
+    new PagesService(
+      model,
+      revision,
+      cache,
+      transactions,
+      outbox as unknown as CmsOutbox,
+    );
+
+  beforeEach(() => {
+    outbox.record.mockClear();
+  });
+
   const samplePage: Page = {
     id: '507f1f77bcf86cd799439011',
     slug: 'about-us',
@@ -34,7 +63,7 @@ describe('PagesService', () => {
       findOne: vi.fn(),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       {} as never,
       cacheService as never,
@@ -68,7 +97,7 @@ describe('PagesService', () => {
       findOne: vi.fn().mockReturnValue({ lean: leanMock }),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       {} as never,
       cacheService as never,
@@ -97,7 +126,7 @@ describe('PagesService', () => {
       }),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       {} as never,
       cacheService as never,
@@ -125,7 +154,7 @@ describe('PagesService', () => {
       find: vi.fn().mockReturnValue({ sort: sortMock }),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       {} as never,
       {} as never,
@@ -144,7 +173,7 @@ describe('PagesService', () => {
         exec: vi.fn().mockResolvedValue({ slug: 'about-us' }),
       }),
     };
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       {} as never,
       {} as never,
@@ -200,7 +229,7 @@ describe('PagesService', () => {
       publishCmsUpdated: vi.fn().mockResolvedValue(undefined),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       MockModel as never,
       revisionService as never,
       cacheService as never,
@@ -217,10 +246,11 @@ describe('PagesService', () => {
     expect(created.slug).toBe('privacy-policy');
     expect(revisionService.bumpVersion).toHaveBeenCalled();
     expect(cacheService.del).toHaveBeenCalledWith('cms:page:privacy-policy');
-    expect(eventsService.publishCmsUpdated).toHaveBeenCalledWith({
-      scope: 'pages',
-      version: 5,
-      key: 'privacy-policy',
+    expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
+      topic: 'cms.updated',
+      aggregateType: 'page',
+      aggregateId: 'privacy-policy',
+      payload: { scope: 'pages', version: 5, key: 'privacy-policy' },
     });
   });
 
@@ -257,7 +287,7 @@ describe('PagesService', () => {
       publishCmsUpdated: vi.fn().mockResolvedValue(undefined),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       revisionService as never,
       cacheService as never,
@@ -273,10 +303,11 @@ describe('PagesService', () => {
     expect(pageDoc.save).toHaveBeenCalled();
     expect(revisionService.bumpVersion).toHaveBeenCalled();
     expect(cacheService.del).toHaveBeenCalledWith('cms:page:terms');
-    expect(eventsService.publishCmsUpdated).toHaveBeenCalledWith({
-      scope: 'pages',
-      version: 6,
-      key: 'terms',
+    expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
+      topic: 'cms.updated',
+      aggregateType: 'page',
+      aggregateId: 'terms',
+      payload: { scope: 'pages', version: 6, key: 'terms' },
     });
   });
 
@@ -286,7 +317,7 @@ describe('PagesService', () => {
         exec: vi.fn().mockResolvedValue(null),
       }),
     };
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       {} as never,
       {} as never,
@@ -301,7 +332,10 @@ describe('PagesService', () => {
   it('deletes page, bumps revision, invalidates cache, and emits event', async () => {
     const pageModel = {
       findOneAndDelete: vi.fn().mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ slug: 'old-page' }),
+        // The delete joins the transaction, so the service chains `.session()`.
+        session: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ slug: 'old-page' }),
+        }),
       }),
     };
     const revisionService = {
@@ -315,7 +349,7 @@ describe('PagesService', () => {
       publishCmsUpdated: vi.fn().mockResolvedValue(undefined),
     };
 
-    const service = new PagesService(
+    const service = buildService(
       pageModel as never,
       revisionService as never,
       cacheService as never,
@@ -328,10 +362,11 @@ describe('PagesService', () => {
     });
     expect(revisionService.bumpVersion).toHaveBeenCalled();
     expect(cacheService.del).toHaveBeenCalledWith('cms:page:old-page');
-    expect(eventsService.publishCmsUpdated).toHaveBeenCalledWith({
-      scope: 'pages',
-      version: 7,
-      key: 'old-page',
+    expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
+      topic: 'cms.updated',
+      aggregateType: 'page',
+      aggregateId: 'old-page',
+      payload: { scope: 'pages', version: 7, key: 'old-page' },
     });
   });
 });

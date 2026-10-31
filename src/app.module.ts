@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { RevisionModule } from './revision/revision.module.js';
 import { CacheModule } from './cache/cache.module.js';
 import { EventsModule } from './events/events.module.js';
+import { CmsOutboxModule } from './outbox/cms-outbox.module.js';
 import { SectionsModule } from './sections/sections.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { NavigationModule } from './navigation/navigation.module.js';
@@ -29,6 +30,9 @@ import { MediaModule } from './media/media.module.js';
     RevisionModule,
     CacheModule,
     EventsModule,
+    // Every content mutation writes its event into `cms_outbox` inside the same
+    // Mongo transaction; the relay publishes it afterwards.
+    CmsOutboxModule,
     SectionsModule,
     SettingsModule,
     NavigationModule,

@@ -14,7 +14,8 @@ import type {
   UpdatePage,
 } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
-import { EventsService } from '../events/events.service.js';
+import { MongoTransactions } from '../db/mongo-tx.js';
+import { CmsOutbox } from '../outbox/cms-outbox.js';
 import { RevisionService } from '../revision/revision.service.js';
 import { PageModel, type PageDocument } from './page.schema.js';
 
@@ -37,7 +38,8 @@ export class PagesService {
     private readonly pageModel: Model<PageDocument>,
     private readonly revisionService: RevisionService,
     private readonly cacheService: CacheService,
-    private readonly eventsService: EventsService,
+    private readonly transactions: MongoTransactions,
+    private readonly outbox: CmsOutbox,
   ) {}
 
   async getPublicPages(): Promise<PageListResponse> {
@@ -92,16 +94,20 @@ export class PagesService {
       isActive: dto.isActive ?? true,
     });
 
-    await created.save();
-
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.pageSlugKey(dto.slug));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'pages',
-      version,
-      key: dto.slug,
+    await this.transactions.run(async (session) => {
+      await created.save({ session });
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'page',
+        aggregateId: dto.slug,
+        payload: { scope: 'pages', version, key: dto.slug },
+      });
     });
+
+    // After the commit, never inside it: Redis cannot join a Mongo transaction,
+    // and invalidating first would let a reader re-cache the pre-commit page.
+    await this.cacheService.del(this.cacheService.pageSlugKey(dto.slug));
 
     return this.toPagePayload(created.toObject<PageDocumentLike>());
   }
@@ -124,37 +130,46 @@ export class PagesService {
     }
     if (updates.isActive !== undefined) page.isActive = updates.isActive;
 
-    await page.save();
-
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.pageSlugKey(slug));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'pages',
-      version,
-      key: slug,
+    await this.transactions.run(async (session) => {
+      await page.save({ session });
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'page',
+        aggregateId: slug,
+        payload: { scope: 'pages', version, key: slug },
+      });
     });
+
+    await this.cacheService.del(this.cacheService.pageSlugKey(slug));
 
     return this.toPagePayload(page.toObject<PageDocumentLike>());
   }
 
   async deletePage(slug: string): Promise<void> {
-    const deleted = await this.pageModel.findOneAndDelete({ slug }).exec();
-    if (!deleted) {
-      throw new NotFoundException({
-        code: 'PAGE_NOT_FOUND',
-        message: `Page '${slug}' not found`,
+    await this.transactions.run(async (session) => {
+      const deleted = await this.pageModel
+        .findOneAndDelete({ slug })
+        .session(session)
+        .exec();
+
+      if (!deleted) {
+        throw new NotFoundException({
+          code: 'PAGE_NOT_FOUND',
+          message: `Page '${slug}' not found`,
+        });
+      }
+
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'page',
+        aggregateId: slug,
+        payload: { scope: 'pages', version, key: slug },
       });
-    }
-
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.pageSlugKey(slug));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'pages',
-      version,
-      key: slug,
     });
+
+    await this.cacheService.del(this.cacheService.pageSlugKey(slug));
   }
 
   private toPagePayload(doc: PageDocumentLike): Page {

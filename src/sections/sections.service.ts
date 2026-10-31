@@ -13,7 +13,8 @@ import {
   sectionSchema,
 } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
-import { EventsService } from '../events/events.service.js';
+import { MongoTransactions } from '../db/mongo-tx.js';
+import { CmsOutbox } from '../outbox/cms-outbox.js';
 import { RevisionService } from '../revision/revision.service.js';
 import { SectionModel, type SectionDocument } from './section.schema.js';
 
@@ -24,7 +25,8 @@ export class SectionsService {
     private readonly sectionModel: Model<SectionDocument>,
     private readonly revisionService: RevisionService,
     private readonly cacheService: CacheService,
-    private readonly eventsService: EventsService,
+    private readonly transactions: MongoTransactions,
+    private readonly outbox: CmsOutbox,
   ) {}
 
   async getPublicSections(pageKey: string): Promise<SectionListResponse> {
@@ -89,18 +91,26 @@ export class SectionsService {
       isActive: dto.isActive ?? true,
     });
 
-    await created.save();
+    await this.transactions.run(async (session) => {
+      await created.save({ session });
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'section',
+        aggregateId: dto.key,
+        payload: {
+          scope: 'sections',
+          version,
+          pageKey: dto.pageKey,
+          key: dto.key,
+        },
+      });
+    });
 
-    const version = await this.revisionService.bumpVersion();
+    // Cache invalidation runs after the commit: Redis cannot join a Mongo
+    // transaction, and invalidating first would re-cache the old sections.
     await this.cacheService.del(this.cacheService.sectionsPageKey(dto.pageKey));
     await this.cacheService.del(this.cacheService.sectionKey(dto.key));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'sections',
-      version,
-      pageKey: dto.pageKey,
-      key: dto.key,
-    });
 
     return this.toSectionPayload(created.toObject());
   }
@@ -170,41 +180,60 @@ export class SectionsService {
     section.settings = candidate.settings;
     section.isActive = candidate.isActive;
 
-    await section.save();
+    await this.transactions.run(async (session) => {
+      await section.save({ session });
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'section',
+        aggregateId: key,
+        payload: {
+          scope: 'sections',
+          version,
+          pageKey: section.pageKey,
+          key,
+        },
+      });
+    });
 
-    const version = await this.revisionService.bumpVersion();
     await this.cacheService.del(this.cacheService.sectionsPageKey(section.pageKey));
     await this.cacheService.del(this.cacheService.sectionKey(key));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'sections',
-      version,
-      pageKey: section.pageKey,
-      key,
-    });
 
     return this.toSectionPayload(section.toObject());
   }
 
   async deleteSection(key: string): Promise<void> {
-    const section = await this.sectionModel.findOneAndDelete({ key }).exec();
-    if (!section) {
-      throw new NotFoundException({
-        code: 'SECTION_NOT_FOUND',
-        message: `Section with key '${key}' not found`,
+    const pageKey = await this.transactions.run(async (session) => {
+      const section = await this.sectionModel
+        .findOneAndDelete({ key })
+        .session(session)
+        .exec();
+
+      if (!section) {
+        throw new NotFoundException({
+          code: 'SECTION_NOT_FOUND',
+          message: `Section with key '${key}' not found`,
+        });
+      }
+
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'section',
+        aggregateId: key,
+        payload: {
+          scope: 'sections',
+          version,
+          pageKey: section.pageKey,
+          key,
+        },
       });
-    }
 
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.sectionsPageKey(section.pageKey));
-    await this.cacheService.del(this.cacheService.sectionKey(key));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'sections',
-      version,
-      pageKey: section.pageKey,
-      key,
+      return section.pageKey as string;
     });
+
+    await this.cacheService.del(this.cacheService.sectionsPageKey(pageKey));
+    await this.cacheService.del(this.cacheService.sectionKey(key));
   }
 
   async reorderSections(dto: SectionReorder): Promise<void> {
@@ -232,16 +261,19 @@ export class SectionsService {
       },
     }));
 
-    await this.sectionModel.bulkWrite(bulkOps);
-
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.sectionsPageKey(dto.pageKey));
-
-    await this.eventsService.publishCmsUpdated({
-      scope: 'sections',
-      version,
-      pageKey: dto.pageKey,
+    await this.transactions.run(async (session) => {
+      await this.sectionModel.bulkWrite(bulkOps, { session });
+      const version = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'section',
+        // A reorder moves the whole page, so the page is the aggregate.
+        aggregateId: dto.pageKey,
+        payload: { scope: 'sections', version, pageKey: dto.pageKey },
+      });
     });
+
+    await this.cacheService.del(this.cacheService.sectionsPageKey(dto.pageKey));
   }
 
   private toSectionPayload(doc: any): Section {

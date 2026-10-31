@@ -1,8 +1,37 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSettings, ThemeSettings } from '@ecom/contracts';
+import type { MongoTransactions } from '../db/mongo-tx.js';
+import type { CmsOutbox } from '../outbox/cms-outbox.js';
 import { SettingsService } from './settings.service.js';
 
 describe('SettingsService', () => {
+  // cms-005: each mutation runs inside one Mongo transaction and writes `cms_outbox`.
+  const fakeSession = { id: 'cms-test-session' } as never;
+  const transactions = {
+    run: <T,>(fn: (session: never) => Promise<T>): Promise<T> => fn(fakeSession),
+  } as unknown as MongoTransactions;
+  const outbox = { record: vi.fn().mockResolvedValue('event-id') };
+
+  const buildService = (
+    cmsSettings: any,
+    pageSettings: any,
+    revision: any,
+    cache: any,
+    _events: unknown,
+  ) =>
+    new SettingsService(
+      cmsSettings,
+      pageSettings,
+      revision,
+      cache,
+      transactions,
+      outbox as unknown as CmsOutbox,
+    );
+
+  beforeEach(() => {
+    outbox.record.mockClear();
+  });
+
   const sampleTheme: ThemeSettings = {
     button: { defaultVariant: 'primary', borderRadius: 8 },
   };
@@ -23,7 +52,7 @@ describe('SettingsService', () => {
       set: vi.fn(),
     };
     const cmsSettingsModel = { findOne: vi.fn() };
-    const service = new SettingsService(
+    const service = buildService(
       cmsSettingsModel as any,
       {} as any,
       {} as any,
@@ -50,7 +79,7 @@ describe('SettingsService', () => {
     };
     const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
 
-    const service = new SettingsService(
+    const service = buildService(
       cmsSettingsModel as any,
       {} as any,
       revisionService as any,
@@ -63,12 +92,14 @@ describe('SettingsService', () => {
     expect(cmsSettingsModel.findOneAndUpdate).toHaveBeenCalledWith(
       { scope: 'global' },
       { $set: { theme: sampleTheme } },
-      { upsert: true, returnDocument: 'after' },
+      { upsert: true, returnDocument: 'after', session: fakeSession },
     );
     expect(cacheService.del).toHaveBeenCalledWith('cms:settings:global');
-    expect(eventsService.publishCmsUpdated).toHaveBeenCalledWith({
-      scope: 'theme',
-      version: 6,
+    expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
+      topic: 'cms.updated',
+      aggregateType: 'settings',
+      aggregateId: 'global',
+      payload: { scope: 'theme', version: 6 },
     });
   });
 
@@ -85,7 +116,7 @@ describe('SettingsService', () => {
     };
     const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
 
-    const service = new SettingsService(
+    const service = buildService(
       {} as any,
       pageSettingsModel as any,
       revisionService as any,
@@ -98,13 +129,14 @@ describe('SettingsService', () => {
     expect(pageSettingsModel.findOneAndUpdate).toHaveBeenCalledWith(
       { pageKey: 'signin' },
       { $set: { settings: sampleAuth } },
-      { upsert: true, returnDocument: 'after' },
+      { upsert: true, returnDocument: 'after', session: fakeSession },
     );
     expect(cacheService.del).toHaveBeenCalledWith('cms:page-settings:signin');
-    expect(eventsService.publishCmsUpdated).toHaveBeenCalledWith({
-      scope: 'page-settings',
-      version: 7,
-      pageKey: 'signin',
+    expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
+      topic: 'cms.updated',
+      aggregateType: 'settings',
+      aggregateId: 'signin',
+      payload: { scope: 'page-settings', version: 7, pageKey: 'signin' },
     });
   });
 });

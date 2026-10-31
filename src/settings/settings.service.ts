@@ -8,7 +8,8 @@ import type {
   ThemeSettings,
 } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
-import { EventsService } from '../events/events.service.js';
+import { MongoTransactions } from '../db/mongo-tx.js';
+import { CmsOutbox } from '../outbox/cms-outbox.js';
 import { RevisionService } from '../revision/revision.service.js';
 import {
   CmsSettingsModel,
@@ -28,7 +29,8 @@ export class SettingsService {
     private readonly pageSettingsModel: Model<PageSettingsDocument>,
     private readonly revisionService: RevisionService,
     private readonly cacheService: CacheService,
-    private readonly eventsService: EventsService,
+    private readonly transactions: MongoTransactions,
+    private readonly outbox: CmsOutbox,
   ) {}
 
   async getGlobalTheme(): Promise<ThemeResponse> {
@@ -54,21 +56,27 @@ export class SettingsService {
   }
 
   async updateGlobalTheme(theme: ThemeSettings): Promise<ThemeResponse> {
-    await this.cmsSettingsModel
-      .findOneAndUpdate(
-        { scope: 'global' },
-        { $set: { theme } },
-        { upsert: true, returnDocument: 'after' },
-      )
-      .exec();
+    const version = await this.transactions.run(async (session) => {
+      await this.cmsSettingsModel
+        .findOneAndUpdate(
+          { scope: 'global' },
+          { $set: { theme } },
+          { upsert: true, returnDocument: 'after', session },
+        )
+        .exec();
 
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.settingsGlobalKey());
+      const bumped = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'settings',
+        aggregateId: 'global',
+        payload: { scope: 'theme', version: bumped },
+      });
 
-    await this.eventsService.publishCmsUpdated({
-      scope: 'theme',
-      version,
+      return bumped;
     });
+
+    await this.cacheService.del(this.cacheService.settingsGlobalKey());
 
     return { theme, version };
   }
@@ -99,22 +107,27 @@ export class SettingsService {
     pageKey: string,
     settings: AuthSettings,
   ): Promise<PageSettingsResponse> {
-    await this.pageSettingsModel
-      .findOneAndUpdate(
-        { pageKey },
-        { $set: { settings } },
-        { upsert: true, returnDocument: 'after' },
-      )
-      .exec();
+    const version = await this.transactions.run(async (session) => {
+      await this.pageSettingsModel
+        .findOneAndUpdate(
+          { pageKey },
+          { $set: { settings } },
+          { upsert: true, returnDocument: 'after', session },
+        )
+        .exec();
 
-    const version = await this.revisionService.bumpVersion();
-    await this.cacheService.del(this.cacheService.pageSettingsKey(pageKey));
+      const bumped = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'settings',
+        aggregateId: pageKey,
+        payload: { scope: 'page-settings', version: bumped, pageKey },
+      });
 
-    await this.eventsService.publishCmsUpdated({
-      scope: 'page-settings',
-      version,
-      pageKey,
+      return bumped;
     });
+
+    await this.cacheService.del(this.cacheService.pageSettingsKey(pageKey));
 
     return { settings, version };
   }
