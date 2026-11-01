@@ -6,7 +6,6 @@ import { DbModule } from './db/db.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { RevisionModule } from './revision/revision.module.js';
 import { CacheModule } from './cache/cache.module.js';
-import { EventsModule } from './events/events.module.js';
 import { CmsOutboxModule } from './outbox/cms-outbox.module.js';
 import { SectionsModule } from './sections/sections.module.js';
 import { SettingsModule } from './settings/settings.module.js';
@@ -29,9 +28,9 @@ import { MediaModule } from './media/media.module.js';
     HealthModule,
     RevisionModule,
     CacheModule,
-    EventsModule,
     // Every content mutation writes its event into `cms_outbox` inside the same
-    // Mongo transaction; the relay publishes it afterwards.
+    // Mongo transaction; the relay publishes it afterwards. Media renditions are
+    // not events — they are tasks, and `MediaModule` owns their SQS wiring.
     CmsOutboxModule,
     SectionsModule,
     SettingsModule,

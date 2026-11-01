@@ -152,7 +152,7 @@ describe('MediaService', () => {
       });
     });
 
-    it('saves file, persists document, publishes resize job, and returns payload', async () => {
+    it('saves file, persists document, enqueues the resize task, and returns payload', async () => {
       const saveMock = vi.fn().mockResolvedValue(undefined);
       function MockMediaModel(this: unknown, data: unknown) {
         Object.assign(this as object, sampleMediaDoc, data, {
@@ -171,11 +171,12 @@ describe('MediaService', () => {
         }),
         delete: vi.fn(),
         exists: vi.fn(),
+        read: vi.fn(),
         resolvePath: vi.fn(),
       };
 
-      const eventsService = {
-        publishResizeImageJob: vi.fn().mockResolvedValue(undefined),
+      const tasks = {
+        enqueueResize: vi.fn().mockResolvedValue(undefined),
       };
 
       const service = new MediaService(
@@ -184,7 +185,7 @@ describe('MediaService', () => {
         {} as never,
         {} as never,
         storage,
-        eventsService as never,
+        tasks as never,
       );
 
       const media = await service.uploadMedia(
@@ -196,10 +197,14 @@ describe('MediaService', () => {
 
       expect(storage.save).toHaveBeenCalled();
       expect(saveMock).toHaveBeenCalled();
-      expect(eventsService.publishResizeImageJob).toHaveBeenCalledWith(
+      // The upload never talks to a broker itself: it hands the job to the
+      // publisher, which owns the queue name and the enabled/disabled decision.
+      expect(tasks.enqueueResize).toHaveBeenCalledWith(
         expect.objectContaining({
+          mediaId: expect.any(String),
           sourceKey: expect.stringMatching(/^media\/\d{4}\/\d{2}\/.+\.png$/),
           formats: ['webp', 'avif', 'jpeg', 'png'],
+          widths: [320, 640, 1024, 1920],
         }),
       );
       expect(media.mimeType).toBe('image/png');
@@ -354,6 +359,7 @@ describe('MediaService', () => {
         save: vi.fn(),
         delete: vi.fn().mockResolvedValue(undefined),
         exists: vi.fn(),
+        read: vi.fn(),
         resolvePath: vi.fn(),
       };
 

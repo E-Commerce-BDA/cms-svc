@@ -6,7 +6,9 @@ import { JwtService } from '@nestjs/jwt';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type { Connection } from 'mongoose';
 import request from 'supertest';
-import { describe, beforeAll, afterAll, it, expect } from 'vitest';
+import { describe, beforeAll, afterAll, it, expect, vi } from 'vitest';
+import { SQS_TASK_QUEUE } from '@ecom/messaging/nest/tasks';
+import type { TaskQueuePort } from '@ecom/messaging';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { JWT_AUDIENCE, JWT_ISSUER } from '../src/auth/auth.constants.js';
@@ -130,6 +132,24 @@ describe('CMS Media Subsystem (e2e)', () => {
     uploadedMediaId = res.body.media.id;
     uploadedMediaKey = res.body.media.key;
     uploadedMediaUrl = res.body.media.url;
+  });
+
+  it('enqueues no task while the queue is disabled, so the upload needs no broker', async () => {
+    // cms-006 removed the Kafka `media.tasks` publish entirely: renditions are
+    // SQS tasks now, and `SQS_TASKS_ENABLED` is false for every suite. The
+    // upload must therefore complete without touching a broker at all.
+    const queue = app.get<TaskQueuePort>(SQS_TASK_QUEUE);
+    const enqueue = vi.spyOn(queue, 'enqueue');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/cms/admin/media')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('usage', 'other')
+      .attach('file', dummyPngBuffer, 'no-broker.png')
+      .expect(201);
+
+    expect(enqueue).not.toHaveBeenCalled();
+    enqueue.mockRestore();
   });
 
   it('serves uploaded image through public file route', async () => {

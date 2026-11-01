@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
-import { createMongoOutboxModule } from '@ecom/messaging/nest';
+// The narrow entry, not the `/nest` barrel: the barrel re-exports the Kafka
+// consumer surface, and this service has no consumer left (cms-006).
+import { createMongoOutboxModule } from '@ecom/messaging/nest/outbox';
 import { mongoOutboxDb } from '../db/mongo-connection.js';
 import { CmsOutbox } from './cms-outbox.js';
 

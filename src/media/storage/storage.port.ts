@@ -21,6 +21,17 @@ export interface StoragePort {
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
   /**
+   * The stored bytes of an object, validated exactly like `resolvePath`.
+   *
+   * The resize worker needs the original to decode it. It takes a `read` rather
+   * than a path so the containment rule stays in one place and an object-store
+   * adapter can implement the interface without inventing a local path.
+   *
+   * Throws `InvalidMediaKeyError` for a rejected key and a plain `ENOENT`
+   * `Error` when nothing is stored under it.
+   */
+  read(key: string): Promise<Buffer>;
+  /**
    * Absolute path of a stored object, validated and proven to stay inside the
    * storage root — including after symlinks are resolved.
    *

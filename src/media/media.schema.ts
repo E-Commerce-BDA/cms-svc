@@ -8,6 +8,22 @@ import type {
 
 export type MediaDocument = HydratedDocument<MediaModel>;
 
+/**
+ * One derived rendition of the original, written by the resize worker.
+ *
+ * `key` is what the delivery routes accept (it matches `mediaKeySchema`), so a
+ * variant is servable through the same storage adapter as its original. An
+ * empty array means "the worker has not run yet", never "there is nothing to
+ * make": the list of renditions comes from the job.
+ */
+export interface MediaVariant {
+  width: number;
+  format: 'webp' | 'avif' | 'jpeg' | 'png';
+  key: string;
+  url: string;
+  bytes: number;
+}
+
 @Schema({ collection: 'cms_media', timestamps: true })
 export class MediaModel {
   @Prop({ type: String, required: true, unique: true, index: true })
@@ -56,6 +72,14 @@ export class MediaModel {
 
   @Prop({ type: String, required: false })
   uploadedBy?: string;
+
+  /**
+   * The rendition manifest. Deliberately not in `mediaSchema` from
+   * `@ecom/contracts`: the API response contract is unchanged by `cms-006`, and
+   * `width`/`height` (which the worker also fills) are already in it.
+   */
+  @Prop({ type: Array, required: false, default: undefined })
+  variants?: MediaVariant[];
 
   createdAt?: Date;
   updatedAt?: Date;

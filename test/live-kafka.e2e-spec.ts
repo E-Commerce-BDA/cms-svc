@@ -8,7 +8,7 @@ import type { Connection } from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { KafkaEventPublisher, OutboxRelay } from '@ecom/messaging';
-import { OUTBOX_PUBLISHER, OUTBOX_RELAY } from '@ecom/messaging/nest';
+import { OUTBOX_PUBLISHER, OUTBOX_RELAY } from '@ecom/messaging/nest/outbox';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { JWT_AUDIENCE, JWT_ISSUER } from '../src/auth/auth.constants.js';

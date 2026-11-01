@@ -53,6 +53,43 @@ E2E tests require the Mongo container and Redis to be running. They use
 `ecom_cms_test`, refuse to run against a non-`_test` database, and drop the test
 database when finished.
 
+One suite needs a real queue. `media-resize.e2e-spec.ts` skips (with a printed
+reason) unless `AWS_ENDPOINT_URL` is set, and it drives the whole path through
+LocalStack:
+
+```bash
+docker compose -f ../ecom-infra/docker-compose.yml up -d localstack
+$env:AWS_ENDPOINT_URL = 'http://localhost:4566'
+pnpm test:e2e -- test/media-resize.e2e-spec.ts
+```
+
+## Media renditions
+
+Uploads are stored and answered immediately; the renditions are made by a
+worker behind SQS, never on the request path (`cms-006`).
+
+```
+POST /cms/admin/media ──► storage.save(bytes) + media row
+                       └► SQS media-resize-image  { idempotencyKey: mediaId }
+                                     │
+                              MediaResizeService
+                               sharp → 320/640/1024/1920 × webp/avif/jpeg/png
+                               one $set: width, height, variants[]
+```
+
+- `SQS_TASKS_ENABLED=false` (the development and test default) turns the worker
+  off: the upload still succeeds and simply has no variants yet.
+- A re-delivered job is a no-op — an existing width/format pair is reused, and
+  widths above the source are dropped rather than upscaled.
+- A variant is served by `GET /cms/media/file/<key>` like any other media,
+  because its key still matches `mediaKeySchema`.
+- The handler is published as a token by `MediaResizeModule` and injected into
+  `createSqsTaskModule`, since a dynamic module cannot see this module's
+  providers.
+- `@ecom/messaging/nest/tasks` is imported instead of the `/nest` barrel: the
+  barrel also re-exports the Kafka consumer surface, and this service has no
+  Kafka consumer.
+
 ## Environment
 
 | Variable | Purpose |
@@ -62,6 +99,11 @@ database when finished.
 | `MONGODB_URI` | Mongo connection string including the database name |
 | `JWT_SECRET` | Shared access-token secret, minimum 32 characters |
 | `REDIS_URL` | Redis connection string |
+| `STORAGE_LOCAL_DIR` | Root directory for uploaded media; required in production |
+| `SQS_TASKS_ENABLED` | Run the rendition worker; `false` in development and test, `true` in production |
+| `AWS_REGION` | SQS region, default `us-east-1` |
+| `AWS_ENDPOINT_URL` | LocalStack endpoint; unset in production |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | LocalStack credentials; unset in production |
 
 Atlas is not used for automated tests. It is reserved for a separate staging
 smoke check in Phase 7.

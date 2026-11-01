@@ -106,6 +106,14 @@ export class LocalDiskStorageAdapter implements StoragePort, OnModuleInit {
   }
 
   /**
+   * Reads through `resolvePath` rather than `resolveKey`, so a symlink planted
+   * under the root is rejected here exactly as it is on the delivery routes.
+   */
+  async read(key: string): Promise<Buffer> {
+    return fs.promises.readFile(await this.resolvePath(key));
+  }
+
+  /**
    * The only place a key becomes a path. Every caller goes through this method,
    * so no route can reach the disk with an unvalidated key.
    *

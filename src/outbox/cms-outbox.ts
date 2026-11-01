@@ -7,9 +7,15 @@ import type {
   OutboxStorePort,
   OutboxWriteInput,
 } from '@ecom/messaging';
-import { OUTBOX_STORE } from '@ecom/messaging/nest';
+import { OUTBOX_STORE } from '@ecom/messaging/nest/outbox';
 
-/** The two topics cms-svc owns. `media.tasks` stays on the direct bus (D10). */
+/**
+ * The two topics cms-svc owns.
+ *
+ * Media renditions are not here: they are commands for one worker, so they
+ * travel as SQS tasks on `media-resize-image` and never touch Kafka (D10,
+ * `cms-006`).
+ */
 export type CmsEventTopic = 'cms.updated' | 'blog.updated';
 
 export interface CmsUpdatedWrite {

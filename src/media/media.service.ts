@@ -17,11 +17,15 @@ import {
   type MediaUsage,
   type MediaVisibility,
 } from '@ecom/contracts';
-import { EventsService } from '../events/events.service.js';
+import {
+  MediaTasksPublisher,
+  RESIZE_FORMATS,
+  RESIZE_WIDTHS,
+} from './media-tasks.publisher.js';
 import { SectionModel, type SectionDocument } from '../sections/section.schema.js';
 import { PageModel, type PageDocument } from '../pages/page.schema.js';
 import { BlogModel, type BlogDocument } from '../blogs/blog.schema.js';
-import { MediaModel, type MediaDocument } from './media.schema.js';
+import { MediaModel, type MediaDocument, type MediaVariant } from './media.schema.js';
 import { sniffImageMimeType } from './media-signature.js';
 import { STORAGE_PORT_TOKEN, type StoragePort } from './storage/storage.port.js';
 
@@ -47,6 +51,14 @@ const EXTENSION_BY_MIME: Record<MediaMimeType, string> = {
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
   'image/avif': 'avif',
+};
+
+/** A rendition has no row of its own, so its type comes from its format. */
+const VARIANT_MIME_TYPES: Record<MediaVariant['format'], MediaMimeType> = {
+  png: 'image/png',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  avif: 'image/avif',
 };
 
 /** Who is asking for the bytes: the open file route or the admin one. */
@@ -79,6 +91,7 @@ interface MediaDocumentLike {
   usage: MediaUsage;
   visibility?: MediaVisibility;
   uploadedBy?: string;
+  variants?: MediaVariant[];
   createdAt?: Date | string;
   updatedAt?: Date | string;
 }
@@ -96,7 +109,7 @@ export class MediaService {
     private readonly blogModel: Model<BlogDocument>,
     @Inject(STORAGE_PORT_TOKEN)
     private readonly storage: StoragePort,
-    private readonly eventsService: EventsService,
+    private readonly tasks: MediaTasksPublisher,
   ) {}
 
   async uploadMedia(
@@ -184,11 +197,11 @@ export class MediaService {
       mediaDoc.toObject<MediaDocumentLike>(),
     );
 
-    await this.eventsService.publishResizeImageJob({
+    await this.tasks.enqueueResize({
       mediaId: mediaPayload.id,
       sourceKey: key,
-      formats: ['webp', 'avif', 'jpeg', 'png'],
-      widths: [320, 640, 1024, 1920],
+      formats: [...RESIZE_FORMATS],
+      widths: [...RESIZE_WIDTHS],
     });
 
     return mediaPayload;
@@ -278,7 +291,12 @@ export class MediaService {
       });
     }
 
-    await this.storage.delete(media.key);
+    // The renditions belong to the upload, so they leave with it: a row that is
+    // gone cannot vouch for a file any more, and nothing would ever collect it.
+    await Promise.all([
+      this.storage.delete(media.key),
+      ...(media.variants ?? []).map((variant) => this.storage.delete(variant.key)),
+    ]);
     await this.mediaModel.findByIdAndDelete(media._id).exec();
   }
 
@@ -309,26 +327,59 @@ export class MediaService {
    * way, so the public route is never an existence oracle for private assets.
    * The storage layer is the only source of a path, and it re-checks containment
    * after resolving symlinks.
+   *
+   * Two shapes resolve: the original, keyed by its own row, and a rendition
+   * (`<uuid>-320.webp`), which has no row of its own — the upload that produced
+   * it lists it in `variants`, and that row owns its visibility.
    */
   async streamablePath(
     key: string,
     viewer: MediaViewer,
   ): Promise<StreamableMediaFile> {
     const media = await this.findByKey(key);
-    if (!media || (viewer === 'public' && this.visibilityOf(media) !== 'public')) {
-      throw this.mediaNotFound();
+    if (media) {
+      if (viewer === 'public' && this.visibilityOf(media) !== 'public') {
+        throw this.mediaNotFound();
+      }
+      return this.containedFile(key, media.mimeType);
     }
 
+    const variant = await this.findVariant(key);
+    if (!variant || (viewer === 'public' && variant.visibility !== 'public')) {
+      throw this.mediaNotFound();
+    }
+    return this.containedFile(key, variant.mimeType);
+  }
+
+  /** A key that storage cannot serve is "not found", whatever the reason. */
+  private async containedFile(
+    key: string,
+    mimeType: MediaMimeType,
+  ): Promise<StreamableMediaFile> {
     try {
-      return {
-        absolutePath: await this.storage.resolvePath(media.key),
-        mimeType: media.mimeType,
-      };
+      return { absolutePath: await this.storage.resolvePath(key), mimeType };
     } catch {
       // A rejected key, an escape, or a file that is gone are all "not found":
       // nothing about the storage root reaches the caller.
       throw this.mediaNotFound();
     }
+  }
+
+  private async findVariant(
+    key: string,
+  ): Promise<{ mimeType: MediaMimeType; visibility: MediaVisibility } | null> {
+    const doc = await this.mediaModel
+      .findOne({ 'variants.key': key })
+      .lean<MediaDocumentLike | null>()
+      .exec();
+    const variant = doc?.variants?.find((candidate) => candidate.key === key);
+    if (!doc || !variant) {
+      return null;
+    }
+    return {
+      mimeType: VARIANT_MIME_TYPES[variant.format],
+      visibility: doc.visibility ?? 'public',
+    };
   }
 
   private parseVisibility(visibility?: string): MediaVisibility {
