@@ -23,3 +23,10 @@ process.env.REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 // Suite-specific directories override this before the module is compiled.
 process.env.STORAGE_LOCAL_DIR =
   process.env.STORAGE_LOCAL_DIR ?? path.join(os.tmpdir(), 'cms-media-e2e');
+
+// cms-007: invalidations are off unless a suite opts in. Without this, every
+// settings/navigation e2e would POST to whatever `STOREFRONT_URL` says and log a
+// warn line per mutation — a test that depends on nothing listening on :3000.
+// `ConfigModule` does not overwrite variables that are already present, so an
+// empty string here beats the value in `.env`.
+process.env.REVALIDATE_SECRET = '';

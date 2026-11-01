@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSettings, ThemeSettings } from '@ecom/contracts';
 import type { MongoTransactions } from '../db/mongo-tx.js';
 import type { CmsOutbox } from '../outbox/cms-outbox.js';
+import type { RevalidateService } from '../revalidate/revalidate.service.js';
 import { SettingsService } from './settings.service.js';
 
 describe('SettingsService', () => {
@@ -17,7 +18,7 @@ describe('SettingsService', () => {
     pageSettings: any,
     revision: any,
     cache: any,
-    _events: unknown,
+    revalidate: any = { revalidate: vi.fn().mockResolvedValue(undefined) },
   ) =>
     new SettingsService(
       cmsSettings,
@@ -26,6 +27,7 @@ describe('SettingsService', () => {
       cache,
       transactions,
       outbox as unknown as CmsOutbox,
+      revalidate as unknown as RevalidateService,
     );
 
   beforeEach(() => {
@@ -77,14 +79,14 @@ describe('SettingsService', () => {
       settingsGlobalKey: vi.fn().mockReturnValue('cms:settings:global'),
       del: vi.fn().mockResolvedValue(undefined),
     };
-    const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       cmsSettingsModel as any,
       {} as any,
       revisionService as any,
       cacheService as any,
-      eventsService as any,
+      revalidate,
     );
 
     const res = await service.updateGlobalTheme(sampleTheme);
@@ -95,6 +97,10 @@ describe('SettingsService', () => {
       { upsert: true, returnDocument: 'after', session: fakeSession },
     );
     expect(cacheService.del).toHaveBeenCalledWith('cms:settings:global');
+    // cms-007: one tag, and it is the storefront's own string — `lib/cms/tags.ts`
+    // answers 400 INVALID_TAGS for anything it did not author.
+    expect(revalidate.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:global-settings']);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'settings',
@@ -114,14 +120,14 @@ describe('SettingsService', () => {
       pageSettingsKey: vi.fn().mockReturnValue('cms:page-settings:signin'),
       del: vi.fn().mockResolvedValue(undefined),
     };
-    const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       {} as any,
       pageSettingsModel as any,
       revisionService as any,
       cacheService as any,
-      eventsService as any,
+      revalidate,
     );
 
     const res = await service.updatePageSettings('signin', sampleAuth);
@@ -132,6 +138,12 @@ describe('SettingsService', () => {
       { upsert: true, returnDocument: 'after', session: fakeSession },
     );
     expect(cacheService.del).toHaveBeenCalledWith('cms:page-settings:signin');
+    // The tag is derived from the same page key the upsert used, so a rename of
+    // one cannot leave the other pointing at a page that no longer exists.
+    expect(revalidate.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidate.revalidate).toHaveBeenCalledWith([
+      'cms:page-settings:signin',
+    ]);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'settings',

@@ -13,6 +13,7 @@ import { NavigationModule } from './navigation/navigation.module.js';
 import { PagesModule } from './pages/pages.module.js';
 import { BlogsModule } from './blogs/blogs.module.js';
 import { MediaModule } from './media/media.module.js';
+import { RevalidateModule } from './revalidate/revalidate.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,10 @@ import { MediaModule } from './media/media.module.js';
     HealthModule,
     RevisionModule,
     CacheModule,
+    // Global: three mutations in two modules tell the storefront to drop a tag,
+    // and that call is best-effort, so it should not appear in their constructors
+    // as anything more than a collaborator.
+    RevalidateModule,
     // Every content mutation writes its event into `cms_outbox` inside the same
     // Mongo transaction; the relay publishes it afterwards. Media renditions are
     // not events — they are tasks, and `MediaModule` owns their SQS wiring.

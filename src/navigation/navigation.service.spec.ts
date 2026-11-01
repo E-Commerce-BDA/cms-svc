@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NavSettings } from '@ecom/contracts';
 import type { MongoTransactions } from '../db/mongo-tx.js';
 import type { CmsOutbox } from '../outbox/cms-outbox.js';
+import type { RevalidateService } from '../revalidate/revalidate.service.js';
 import { NavigationService } from './navigation.service.js';
 
 describe('NavigationService', () => {
@@ -16,7 +17,7 @@ describe('NavigationService', () => {
     model: any,
     revision: any,
     cache: any,
-    _events: unknown,
+    revalidate: any = { revalidate: vi.fn().mockResolvedValue(undefined) },
   ) =>
     new NavigationService(
       model,
@@ -24,6 +25,7 @@ describe('NavigationService', () => {
       cache,
       transactions,
       outbox as unknown as CmsOutbox,
+      revalidate as unknown as RevalidateService,
     );
 
   beforeEach(() => {
@@ -70,13 +72,13 @@ describe('NavigationService', () => {
       navigationKey: vi.fn().mockReturnValue('cms:nav'),
       del: vi.fn().mockResolvedValue(undefined),
     };
-    const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       navModel as any,
       revisionService as any,
       cacheService as any,
-      eventsService as any,
+      revalidate,
     );
 
     const res = await service.updateNavigation(sampleNav);
@@ -87,6 +89,10 @@ describe('NavigationService', () => {
       { upsert: true, returnDocument: 'after', session: fakeSession },
     );
     expect(cacheService.del).toHaveBeenCalledWith('cms:nav');
+    // cms-007: the navigation tag, not a page tag — the header is shared by every
+    // route the storefront renders.
+    expect(revalidate.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:navigation']);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'navigation',

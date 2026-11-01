@@ -53,4 +53,51 @@ describe('envValidationSchema', () => {
 
     expect(error?.message).toContain('PORT');
   });
+
+  // cms-007: the storefront call is best-effort, so a misconfigured production
+  // deployment would look healthy while every publish served a stale page.
+  it('refuses to boot a production instance without REVALIDATE_SECRET', () => {
+    const { error } = validate({
+      NODE_ENV: 'production',
+      STORAGE_LOCAL_DIR: '/var/lib/cms/media',
+    });
+
+    expect(error?.message).toContain('REVALIDATE_SECRET');
+  });
+
+  it('rejects a REVALIDATE_SECRET too short to be a shared secret', () => {
+    const { error } = validate({
+      NODE_ENV: 'production',
+      STORAGE_LOCAL_DIR: '/var/lib/cms/media',
+      REVALIDATE_SECRET: 'short',
+    });
+
+    expect(error?.message).toContain('REVALIDATE_SECRET');
+  });
+
+  it('accepts a production instance that names both the storefront and the secret', () => {
+    const { error, value } = validate({
+      NODE_ENV: 'production',
+      STORAGE_LOCAL_DIR: '/var/lib/cms/media',
+      STOREFRONT_URL: 'https://shop.example.com',
+      REVALIDATE_SECRET: 'a-shared-secret-long-enough',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.STOREFRONT_URL).toBe('https://shop.example.com');
+  });
+
+  it('treats a blank REVALIDATE_SECRET in development as "off", not as a secret', () => {
+    const { error, value } = validate({ REVALIDATE_SECRET: '' });
+
+    expect(error).toBeUndefined();
+    expect(value.REVALIDATE_SECRET).toBeUndefined();
+  });
+
+  it('defaults STOREFRONT_URL to the local storefront and rejects a non-http value', () => {
+    expect(validate().value.STOREFRONT_URL).toBe('http://localhost:3000');
+    expect(validate({ STOREFRONT_URL: 'localhost:3000' }).error?.message).toContain(
+      'STOREFRONT_URL',
+    );
+  });
 });

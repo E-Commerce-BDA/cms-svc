@@ -90,6 +90,30 @@ POST /cms/admin/media ──► storage.save(bytes) + media row
   barrel also re-exports the Kafka consumer surface, and this service has no
   Kafka consumer.
 
+## Telling the storefront (`cms-007`)
+
+The storefront caches CMS reads in Next's Data Cache, which lives in its own
+process, so publishing also means one HTTP call out:
+
+```
+PUT /cms/admin/navigation ──► Mongo commit + outbox row
+                            ├► redis.del('cms:nav')
+                            └► POST $STOREFRONT_URL/api/revalidate
+                               x-revalidate-secret: $REVALIDATE_SECRET
+                               {"tags":["cms:navigation"]}
+```
+
+- Exactly three mutations send a tag: theme → `cms:global-settings`, page
+  settings → `cms:page-settings:<pageKey>`, navigation → `cms:navigation`.
+  Sections, pages and blogs send nothing — the storefront has no tag or reader
+  for them yet, and it answers `400 INVALID_TAGS` for anything it did not author.
+- Failure is a warn line, never a failed publish: the write already committed and
+  the page is merely stale until its TTL. The client timeout is 2 s.
+- With no `REVALIDATE_SECRET` the call is skipped entirely. Production refuses to
+  boot without it, so an "off by accident" deployment cannot exist.
+- The e2e suite blanks the secret in `test/setup-env.ts`; `test/revalidate.e2e-spec.ts`
+  boots a stub storefront and asserts the exact path, header and tag list.
+
 ## Environment
 
 | Variable | Purpose |
@@ -104,6 +128,8 @@ POST /cms/admin/media ──► storage.save(bytes) + media row
 | `AWS_REGION` | SQS region, default `us-east-1` |
 | `AWS_ENDPOINT_URL` | LocalStack endpoint; unset in production |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | LocalStack credentials; unset in production |
+| `STOREFRONT_URL` | Storefront base URL for the invalidation call, default `http://localhost:3000` |
+| `REVALIDATE_SECRET` | Shared secret sent as `x-revalidate-secret`; required in production, empty means "off" |
 
 Atlas is not used for automated tests. It is reserved for a separate staging
 smoke check in Phase 7.

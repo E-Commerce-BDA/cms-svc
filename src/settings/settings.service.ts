@@ -10,6 +10,10 @@ import type {
 import { CacheService } from '../cache/cache.service.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
+import {
+  RevalidateService,
+  storefrontTags,
+} from '../revalidate/revalidate.service.js';
 import { RevisionService } from '../revision/revision.service.js';
 import {
   CmsSettingsModel,
@@ -31,6 +35,7 @@ export class SettingsService {
     private readonly cacheService: CacheService,
     private readonly transactions: MongoTransactions,
     private readonly outbox: CmsOutbox,
+    private readonly revalidate: RevalidateService,
   ) {}
 
   async getGlobalTheme(): Promise<ThemeResponse> {
@@ -77,6 +82,9 @@ export class SettingsService {
     });
 
     await this.cacheService.del(this.cacheService.settingsGlobalKey());
+    // After the commit and after our own cache: the storefront's Data Cache is
+    // the one copy of this content that cms-svc cannot delete by itself.
+    await this.revalidate.revalidate([storefrontTags.globalSettings]);
 
     return { theme, version };
   }
@@ -128,6 +136,9 @@ export class SettingsService {
     });
 
     await this.cacheService.del(this.cacheService.pageSettingsKey(pageKey));
+    // One page key, one tag: `cms:page-settings:<pageKey>` is exactly what the
+    // storefront's reader subscribes to.
+    await this.revalidate.revalidate([storefrontTags.pageSettings(pageKey)]);
 
     return { settings, version };
   }

@@ -5,6 +5,10 @@ import type { NavResponse, NavSettings } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
+import {
+  RevalidateService,
+  storefrontTags,
+} from '../revalidate/revalidate.service.js';
 import { RevisionService } from '../revision/revision.service.js';
 import {
   NavigationModel,
@@ -20,6 +24,7 @@ export class NavigationService {
     private readonly cacheService: CacheService,
     private readonly transactions: MongoTransactions,
     private readonly outbox: CmsOutbox,
+    private readonly revalidate: RevalidateService,
   ) {}
 
   async getNavigation(): Promise<NavResponse> {
@@ -66,6 +71,8 @@ export class NavigationService {
     });
 
     await this.cacheService.del(this.cacheService.navigationKey());
+    // The header is on every page, so this tag is the widest one we own.
+    await this.revalidate.revalidate([storefrontTags.navigation]);
 
     return { navbar, version };
   }

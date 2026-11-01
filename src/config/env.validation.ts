@@ -46,6 +46,31 @@ export const envValidationSchema = Joi.object({
   // where the SDK falls back to its normal credential chain (task role, SSO…).
   AWS_ACCESS_KEY_ID: Joi.string().empty('').optional(),
   AWS_SECRET_ACCESS_KEY: Joi.string().empty('').optional(),
+  // cms-007: the storefront owns its Next Data Cache, so publishing content means
+  // POSTing to it. The URL has a local default; the secret does not — without it
+  // the call is a no-op in development and a refusal to boot in production,
+  // because a production cms-svc whose invalidations silently do nothing would
+  // serve stale pages until every TTL expires and never say why.
+  STOREFRONT_URL: Joi.string()
+    .pattern(/^https?:\/\/.+/)
+    .default('http://localhost:3000')
+    .messages({
+      'string.pattern.base':
+        'STOREFRONT_URL must be an http(s) URL such as http://localhost:3000',
+    }),
+  REVALIDATE_SECRET: Joi.string()
+    .empty('')
+    .when('NODE_ENV', {
+      is: 'production',
+      // oxlint-disable-next-line unicorn/no-thenable -- Joi's `then` branch.
+      then: Joi.string().min(16).required(),
+      otherwise: Joi.string().optional(),
+    })
+    .messages({
+      'any.required':
+        'REVALIDATE_SECRET is required in production; it must match the storefront value',
+      'string.min': 'REVALIDATE_SECRET must be at least 16 characters',
+    }),
   // Optional in development (defaults to <cwd>/storage) so compose and the e2e
   // suites keep working; production must name an absolute directory, otherwise
   // the process would write wherever it was started from.
