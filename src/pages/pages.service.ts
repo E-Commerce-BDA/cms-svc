@@ -16,6 +16,10 @@ import type {
 import { CacheService } from '../cache/cache.service.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
+import {
+  RevalidateService,
+  storefrontTags,
+} from '../revalidate/revalidate.service.js';
 import { RevisionService } from '../revision/revision.service.js';
 import { PageModel, type PageDocument } from './page.schema.js';
 
@@ -40,6 +44,7 @@ export class PagesService {
     private readonly cacheService: CacheService,
     private readonly transactions: MongoTransactions,
     private readonly outbox: CmsOutbox,
+    private readonly revalidate: RevalidateService,
   ) {}
 
   async getPublicPages(): Promise<PageListResponse> {
@@ -108,6 +113,9 @@ export class PagesService {
     // After the commit, never inside it: Redis cannot join a Mongo transaction,
     // and invalidating first would let a reader re-cache the pre-commit page.
     await this.cacheService.del(this.cacheService.pageSlugKey(dto.slug));
+    // cms-008: one slug, one tag — the storefront's legal/company routes
+    // subscribe to exactly `cms:pages:<slug>`.
+    await this.revalidate.revalidate([storefrontTags.pages(dto.slug)]);
 
     return this.toPagePayload(created.toObject<PageDocumentLike>());
   }
@@ -142,6 +150,7 @@ export class PagesService {
     });
 
     await this.cacheService.del(this.cacheService.pageSlugKey(slug));
+    await this.revalidate.revalidate([storefrontTags.pages(slug)]);
 
     return this.toPagePayload(page.toObject<PageDocumentLike>());
   }
@@ -170,6 +179,7 @@ export class PagesService {
     });
 
     await this.cacheService.del(this.cacheService.pageSlugKey(slug));
+    await this.revalidate.revalidate([storefrontTags.pages(slug)]);
   }
 
   private toPagePayload(doc: PageDocumentLike): Page {

@@ -20,6 +20,10 @@ import { CacheService } from '../cache/cache.service.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
 import {
+  RevalidateService,
+  storefrontTags,
+} from '../revalidate/revalidate.service.js';
+import {
   BlogCategoryModel,
   type BlogCategoryDocument,
 } from './blog-category.schema.js';
@@ -60,6 +64,7 @@ export class BlogsService {
     private readonly cacheService: CacheService,
     private readonly transactions: MongoTransactions,
     private readonly outbox: CmsOutbox,
+    private readonly revalidate: RevalidateService,
   ) {}
 
   async getPublicCategories(): Promise<BlogCategory[]> {
@@ -309,6 +314,9 @@ export class BlogsService {
 
     if (dto.status === 'published') {
       await this.cacheService.del(this.cacheService.blogSlugKey(dto.slug));
+      // cms-008: a draft never appears on the storefront, so only a publish
+      // needs the `cms:blogs` list tag dropped.
+      await this.revalidate.revalidate([storefrontTags.blogs]);
     }
 
     return blogPayload;
@@ -390,6 +398,9 @@ export class BlogsService {
     });
 
     await this.cacheService.del(this.cacheService.blogSlugKey(blog.slug));
+    // An update can move a post across the published/draft boundary in either
+    // direction, so the list tag is dropped on every update.
+    await this.revalidate.revalidate([storefrontTags.blogs]);
 
     return blogPayload;
   }
@@ -457,6 +468,7 @@ export class BlogsService {
     });
 
     await this.cacheService.del(this.cacheService.blogSlugKey(deletedSlug));
+    await this.revalidate.revalidate([storefrontTags.blogs]);
   }
 
   private toBlogCategoryPayload(

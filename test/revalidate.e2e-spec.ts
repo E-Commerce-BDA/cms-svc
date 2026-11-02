@@ -158,9 +158,9 @@ describe('CMS revalidation (e2e)', () => {
     expect(recorded[0]?.tags).toEqual(['cms:navigation']);
   });
 
-  it('sends nothing for content the storefront has no reader for yet', async () => {
-    // Sections, pages and blogs have no tag in `lib/cms/tags.ts` and no reader in
-    // the storefront (sf-061/sf-062). Inventing one would only earn a 400.
+  it('revalidates the sections page tag after a section publish', async () => {
+    // cms-008: the home page reads `cms:sections:<pageKey>`, so a section
+    // write must name the page it belongs to — never a per-section tag.
     await request(app.getHttpServer())
       .post('/api/v1/cms/admin/sections')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -184,7 +184,71 @@ describe('CMS revalidation (e2e)', () => {
       })
       .expect(201);
 
-    expect(recorded).toEqual([]);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.tags).toEqual(['cms:sections:homepage']);
+  });
+
+  it('revalidates the footer tag after a footer publish', async () => {
+    await put('/api/v1/cms/admin/footer', {
+      columns: [
+        { title: 'Shop', links: [{ label: 'Products', href: '/products' }] },
+      ],
+      wordmark: 'AFABETA',
+    }).expect(200);
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.tags).toEqual(['cms:footer']);
+  });
+
+  it('revalidates the page tag after a CMS page create', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/cms/admin/pages')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        slug: 'privacy',
+        title: 'Privacy Policy',
+        blocks: [
+          { type: 'rich_text', id: 'rt-1', body: '<p>We respect privacy.</p>' },
+        ],
+        isActive: true,
+      })
+      .expect(201);
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.tags).toEqual(['cms:pages:privacy']);
+  });
+
+  it('revalidates the blogs list tag only when a publish changes the list', async () => {
+    // A draft changes nothing public, so the storefront stays unpinged.
+    await request(app.getHttpServer())
+      .post('/api/v1/cms/admin/blogs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        slug: 'draft-wave',
+        title: 'Draft Wave',
+        content: [{ type: 'paragraph', id: 'p-1', text: 'Not public yet.' }],
+        categoryId: '68b000000000000000000001',
+        status: 'draft',
+      })
+      .expect(201);
+
+    expect(recorded).toHaveLength(0);
+
+    // The same post published: now the list tag must drop.
+    await request(app.getHttpServer())
+      .post('/api/v1/cms/admin/blogs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        slug: 'live-wave',
+        title: 'Live Wave',
+        content: [{ type: 'paragraph', id: 'p-1', text: 'Public now.' }],
+        categoryId: '68b000000000000000000001',
+        status: 'published',
+      })
+      .expect(201);
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.tags).toEqual(['cms:blogs']);
   });
 
   it('still returns 200 when the storefront refuses the invalidation', async () => {

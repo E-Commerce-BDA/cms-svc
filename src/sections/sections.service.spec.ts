@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Section } from '@ecom/contracts';
 import type { MongoTransactions } from '../db/mongo-tx.js';
 import type { CmsOutbox } from '../outbox/cms-outbox.js';
+import type { RevalidateService } from '../revalidate/revalidate.service.js';
 import { SectionsService } from './sections.service.js';
 
 describe('SectionsService', () => {
@@ -19,6 +20,7 @@ describe('SectionsService', () => {
     revision: any,
     cache: any,
     _events: unknown,
+    revalidate: any = { revalidate: vi.fn().mockResolvedValue(undefined) },
   ) =>
     new SectionsService(
       model,
@@ -26,6 +28,7 @@ describe('SectionsService', () => {
       cache,
       transactions,
       outbox as unknown as CmsOutbox,
+      revalidate as unknown as RevalidateService,
     );
 
   beforeEach(() => {
@@ -201,12 +204,14 @@ describe('SectionsService', () => {
       del: vi.fn().mockResolvedValue(undefined),
     };
     const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       sectionModel as any,
       revisionService as any,
       cacheService as any,
       eventsService as any,
+      revalidate,
     );
 
     await service.reorderSections({
@@ -235,6 +240,8 @@ describe('SectionsService', () => {
       session: fakeSession,
     });
     expect(cacheService.del).toHaveBeenCalledWith('cms:sections:homepage');
+    // cms-008: a reorder changes the page order, so the page tag is dropped.
+    expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:sections:homepage']);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'section',
@@ -276,12 +283,14 @@ describe('SectionsService', () => {
       sectionKey: vi.fn().mockReturnValue('cms:section:home-banner'),
       del: vi.fn().mockResolvedValue(undefined),
     };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       MockSectionModel as any,
       revisionService as any,
       cacheService as any,
       {} as any,
+      revalidate,
     );
 
     await service.createSection({
@@ -293,6 +302,10 @@ describe('SectionsService', () => {
     expect(saveMock).toHaveBeenCalledWith({ session: fakeSession });
     expect(cacheService.del).toHaveBeenCalledWith('cms:sections:homepage');
     expect(cacheService.del).toHaveBeenCalledWith('cms:section:home-banner');
+    // cms-008: the page tag the storefront home subscribes to.
+    expect(revalidate.revalidate).toHaveBeenCalledWith([
+      'cms:sections:homepage',
+    ]);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'section',
@@ -325,5 +338,75 @@ describe('SectionsService', () => {
     await expect(service.deleteSection('non-existent')).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it('updates a section and revalidates exactly its page tag', async () => {
+    const doc = {
+      ...sampleSection,
+      save: vi.fn().mockResolvedValue(undefined),
+      toObject: () => sampleSection,
+    };
+    const sectionModel = {
+      findOne: vi.fn().mockReturnValue({
+        exec: vi.fn().mockResolvedValue(doc),
+      }),
+    };
+    const cacheService = {
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionKey: vi.fn().mockReturnValue('cms:section:home-hero'),
+      del: vi.fn().mockResolvedValue(undefined),
+    };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
+
+    const service = buildService(
+      sectionModel as any,
+      { bumpVersion: vi.fn().mockResolvedValue(9) } as any,
+      cacheService as any,
+      {} as any,
+      revalidate,
+    );
+
+    const res = await service.updateSection('home-hero', {
+      title: 'Winter Hero',
+    });
+    expect(res.key).toBe('home-hero');
+    // cms-008 parity: one mutation, one page tag — never the section key.
+    expect(revalidate.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidate.revalidate).toHaveBeenCalledWith([
+      'cms:sections:homepage',
+    ]);
+  });
+
+  it('deletes a section and revalidates exactly its page tag', async () => {
+    const sectionModel = {
+      findOneAndDelete: vi.fn().mockReturnValue({
+        session: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({
+            key: 'home-hero',
+            pageKey: 'homepage',
+          }),
+        }),
+      }),
+    };
+    const cacheService = {
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionKey: vi.fn().mockReturnValue('cms:section:home-hero'),
+      del: vi.fn().mockResolvedValue(undefined),
+    };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
+
+    const service = buildService(
+      sectionModel as any,
+      { bumpVersion: vi.fn().mockResolvedValue(10) } as any,
+      cacheService as any,
+      {} as any,
+      revalidate,
+    );
+
+    await service.deleteSection('home-hero');
+    expect(revalidate.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidate.revalidate).toHaveBeenCalledWith([
+      'cms:sections:homepage',
+    ]);
   });
 });

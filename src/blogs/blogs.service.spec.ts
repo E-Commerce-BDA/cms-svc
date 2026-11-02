@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreateBlog, CreateBlogCategory, UpdateBlog } from '@ecom/contracts';
 import type { MongoTransactions } from '../db/mongo-tx.js';
 import type { CmsOutbox } from '../outbox/cms-outbox.js';
+import type { RevalidateService } from '../revalidate/revalidate.service.js';
 import { BlogsService } from './blogs.service.js';
 
 describe('BlogsService', () => {
@@ -19,6 +20,7 @@ describe('BlogsService', () => {
     blogCategory: any,
     cache: any,
     _events: unknown,
+    revalidate: any = { revalidate: vi.fn().mockResolvedValue(undefined) },
   ) =>
     new BlogsService(
       blog,
@@ -26,6 +28,7 @@ describe('BlogsService', () => {
       cache,
       transactions,
       outbox as unknown as CmsOutbox,
+      revalidate as unknown as RevalidateService,
     );
 
   beforeEach(() => {
@@ -346,12 +349,14 @@ describe('BlogsService', () => {
 
       const eventsService = { publishBlogUpdated: vi.fn() };
       const cacheService = { del: vi.fn() };
+      const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
       const service = buildService(
         MockBlogModel as never,
         {} as never,
         cacheService as never,
         eventsService as never,
+        revalidate,
       );
 
       const dto: CreateBlog = {
@@ -366,6 +371,8 @@ describe('BlogsService', () => {
       expect(res.status).toBe('draft');
       // A draft is not visible to consumers, so nothing is announced.
       expect(outbox.record).not.toHaveBeenCalled();
+      // cms-008: and the storefront is not pinged either — the list did not change.
+      expect(revalidate.revalidate).not.toHaveBeenCalled();
     });
 
     it('creates published blog, invalidates cache, and emits blog.updated', async () => {
@@ -404,12 +411,14 @@ describe('BlogsService', () => {
         blogSlugKey: vi.fn().mockReturnValue('cms:blog:live-post'),
         del: vi.fn().mockResolvedValue(undefined),
       };
+      const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
       const service = buildService(
         MockBlogModel as never,
         {} as never,
         cacheService as never,
         eventsService as never,
+        revalidate,
       );
 
       const dto: CreateBlog = {
@@ -423,6 +432,8 @@ describe('BlogsService', () => {
       const res = await service.createBlog(dto);
       expect(res.status).toBe('published');
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
+      // cms-008: publishing changes the storefront blog list.
+      expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:blogs']);
       expect(outbox.record).toHaveBeenCalledWith(
         fakeSession,
         expect.objectContaining({
@@ -471,12 +482,14 @@ describe('BlogsService', () => {
         blogSlugKey: vi.fn().mockReturnValue('cms:blog:live-post'),
         del: vi.fn().mockResolvedValue(undefined),
       };
+      const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
       const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
         eventsService as never,
+        revalidate,
       );
 
       const update: UpdateBlog = {
@@ -488,6 +501,7 @@ describe('BlogsService', () => {
       expect(res.status).toBe('published');
       expect(doc.save).toHaveBeenCalled();
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
+      expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:blogs']);
       expect(outbox.record).toHaveBeenCalledWith(
         fakeSession,
         expect.objectContaining({
@@ -523,16 +537,19 @@ describe('BlogsService', () => {
         blogSlugKey: vi.fn().mockReturnValue('cms:blog:live-post'),
         del: vi.fn().mockResolvedValue(undefined),
       };
+      const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
       const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
         eventsService as never,
+        revalidate,
       );
 
       await service.deleteBlog('507f1f77bcf86cd799439021');
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
+      expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:blogs']);
       expect(outbox.record).toHaveBeenCalledWith(
         fakeSession,
         expect.objectContaining({
@@ -580,12 +597,14 @@ describe('BlogsService', () => {
         blogSlugKey: vi.fn().mockReturnValue('cms:blog:live-post'),
         del: vi.fn().mockResolvedValue(undefined),
       };
+      const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
       const service = buildService(
         blogModel as never,
         {} as never,
         cacheService as never,
         eventsService as never,
+        revalidate,
       );
 
       const update: UpdateBlog = {
@@ -596,6 +615,8 @@ describe('BlogsService', () => {
       expect(res.status).toBe('draft');
       expect(doc.save).toHaveBeenCalled();
       expect(cacheService.del).toHaveBeenCalledWith('cms:blog:live-post');
+      // Un-publishing changes the list too, so the tag is dropped either way.
+      expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:blogs']);
       expect(outbox.record).toHaveBeenCalledWith(
         fakeSession,
         expect.objectContaining({

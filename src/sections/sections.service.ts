@@ -15,6 +15,10 @@ import {
 import { CacheService } from '../cache/cache.service.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
+import {
+  RevalidateService,
+  storefrontTags,
+} from '../revalidate/revalidate.service.js';
 import { RevisionService } from '../revision/revision.service.js';
 import { SectionModel, type SectionDocument } from './section.schema.js';
 
@@ -27,6 +31,7 @@ export class SectionsService {
     private readonly cacheService: CacheService,
     private readonly transactions: MongoTransactions,
     private readonly outbox: CmsOutbox,
+    private readonly revalidate: RevalidateService,
   ) {}
 
   async getPublicSections(pageKey: string): Promise<SectionListResponse> {
@@ -111,6 +116,8 @@ export class SectionsService {
     // transaction, and invalidating first would re-cache the old sections.
     await this.cacheService.del(this.cacheService.sectionsPageKey(dto.pageKey));
     await this.cacheService.del(this.cacheService.sectionKey(dto.key));
+    // cms-008: the storefront home reads its sections through one tag per page.
+    await this.revalidate.revalidate([storefrontTags.sections(dto.pageKey)]);
 
     return this.toSectionPayload(created.toObject());
   }
@@ -198,6 +205,9 @@ export class SectionsService {
 
     await this.cacheService.del(this.cacheService.sectionsPageKey(section.pageKey));
     await this.cacheService.del(this.cacheService.sectionKey(key));
+    await this.revalidate.revalidate([
+      storefrontTags.sections(section.pageKey),
+    ]);
 
     return this.toSectionPayload(section.toObject());
   }
@@ -234,6 +244,7 @@ export class SectionsService {
 
     await this.cacheService.del(this.cacheService.sectionsPageKey(pageKey));
     await this.cacheService.del(this.cacheService.sectionKey(key));
+    await this.revalidate.revalidate([storefrontTags.sections(pageKey)]);
   }
 
   async reorderSections(dto: SectionReorder): Promise<void> {
@@ -274,6 +285,7 @@ export class SectionsService {
     });
 
     await this.cacheService.del(this.cacheService.sectionsPageKey(dto.pageKey));
+    await this.revalidate.revalidate([storefrontTags.sections(dto.pageKey)]);
   }
 
   private toSectionPayload(doc: any): Section {

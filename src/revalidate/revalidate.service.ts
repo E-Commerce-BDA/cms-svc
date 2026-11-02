@@ -13,6 +13,14 @@ export const storefrontTags = {
   globalSettings: 'cms:global-settings',
   navigation: 'cms:navigation',
   pageSettings: (pageKey: string): string => `cms:page-settings:${pageKey}`,
+  // cms-008: the CMS-home wave gave the storefront readers for sections, the
+  // footer document, the blog list and CMS pages. Each page key and slug maps
+  // to exactly one tag string; the storefront's `lib/cms/tags.ts` allowlist is
+  // authored against these same shapes (`[a-z0-9-]{1,32}`).
+  sections: (pageKey: string): string => `cms:sections:${pageKey}`,
+  footer: 'cms:footer',
+  blogs: 'cms:blogs',
+  pages: (slug: string): string => `cms:pages:${slug}`,
 } as const;
 
 /** A slow invalidation is worse than a skipped one: the write already committed. */

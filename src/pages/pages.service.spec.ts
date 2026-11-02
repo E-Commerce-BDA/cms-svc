@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreatePage, Page, UpdatePage } from '@ecom/contracts';
 import type { MongoTransactions } from '../db/mongo-tx.js';
 import type { CmsOutbox } from '../outbox/cms-outbox.js';
+import type { RevalidateService } from '../revalidate/revalidate.service.js';
 import { PagesService } from './pages.service.js';
 
 describe('PagesService', () => {
@@ -20,6 +21,7 @@ describe('PagesService', () => {
     revision: any,
     cache: any,
     _events: unknown,
+    revalidate: any = { revalidate: vi.fn().mockResolvedValue(undefined) },
   ) =>
     new PagesService(
       model,
@@ -27,6 +29,7 @@ describe('PagesService', () => {
       cache,
       transactions,
       outbox as unknown as CmsOutbox,
+      revalidate as unknown as RevalidateService,
     );
 
   beforeEach(() => {
@@ -228,12 +231,14 @@ describe('PagesService', () => {
     const eventsService = {
       publishCmsUpdated: vi.fn().mockResolvedValue(undefined),
     };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       MockModel as never,
       revisionService as never,
       cacheService as never,
       eventsService as never,
+      revalidate,
     );
 
     const dto: CreatePage = {
@@ -246,6 +251,10 @@ describe('PagesService', () => {
     expect(created.slug).toBe('privacy-policy');
     expect(revisionService.bumpVersion).toHaveBeenCalled();
     expect(cacheService.del).toHaveBeenCalledWith('cms:page:privacy-policy');
+    // cms-008: the storefront legal route subscribes to `cms:pages:<slug>`.
+    expect(revalidate.revalidate).toHaveBeenCalledWith([
+      'cms:pages:privacy-policy',
+    ]);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'page',
@@ -286,12 +295,14 @@ describe('PagesService', () => {
     const eventsService = {
       publishCmsUpdated: vi.fn().mockResolvedValue(undefined),
     };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       pageModel as never,
       revisionService as never,
       cacheService as never,
       eventsService as never,
+      revalidate,
     );
 
     const update: UpdatePage = {
@@ -303,6 +314,7 @@ describe('PagesService', () => {
     expect(pageDoc.save).toHaveBeenCalled();
     expect(revisionService.bumpVersion).toHaveBeenCalled();
     expect(cacheService.del).toHaveBeenCalledWith('cms:page:terms');
+    expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:pages:terms']);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'page',
@@ -348,12 +360,14 @@ describe('PagesService', () => {
     const eventsService = {
       publishCmsUpdated: vi.fn().mockResolvedValue(undefined),
     };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
 
     const service = buildService(
       pageModel as never,
       revisionService as never,
       cacheService as never,
       eventsService as never,
+      revalidate,
     );
 
     await service.deletePage('old-page');
@@ -362,6 +376,7 @@ describe('PagesService', () => {
     });
     expect(revisionService.bumpVersion).toHaveBeenCalled();
     expect(cacheService.del).toHaveBeenCalledWith('cms:page:old-page');
+    expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:pages:old-page']);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
       topic: 'cms.updated',
       aggregateType: 'page',

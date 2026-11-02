@@ -10,6 +10,7 @@ import { CmsOutboxModule } from './outbox/cms-outbox.module.js';
 import { SectionsModule } from './sections/sections.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { NavigationModule } from './navigation/navigation.module.js';
+import { FooterModule } from './footer/footer.module.js';
 import { PagesModule } from './pages/pages.module.js';
 import { BlogsModule } from './blogs/blogs.module.js';
 import { MediaModule } from './media/media.module.js';
@@ -40,6 +41,7 @@ import { RevalidateModule } from './revalidate/revalidate.module.js';
     SectionsModule,
     SettingsModule,
     NavigationModule,
+    FooterModule,
     PagesModule,
     BlogsModule,
     MediaModule,

@@ -24,6 +24,10 @@ export class CacheService {
     return 'cms:nav';
   }
 
+  footerKey(): string {
+    return 'cms:footer';
+  }
+
   pageSettingsKey(pageKey: string): string {
     return `cms:page-settings:${pageKey}`;
   }
