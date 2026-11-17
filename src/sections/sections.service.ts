@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import {
+  type CloneSections,
   type Section,
   type SectionListResponse,
   type SectionReorder,
@@ -286,6 +287,126 @@ export class SectionsService {
 
     await this.cacheService.del(this.cacheService.sectionsPageKey(dto.pageKey));
     await this.revalidate.revalidate([storefrontTags.sections(dto.pageKey)]);
+  }
+
+  async cloneSections(dto: CloneSections): Promise<SectionListResponse> {
+    if (dto.fromPageKey === dto.toPageKey) {
+      throw new BadRequestException({
+        code: 'CLONE_SAME_PAGE',
+        message: 'Clone target page must differ from source',
+      });
+    }
+
+    const sourceDocs = await this.sectionModel
+      .find({ pageKey: dto.fromPageKey })
+      .sort({ sortOrder: 1 })
+      .lean()
+      .exec();
+
+    if (sourceDocs.length === 0) {
+      throw new NotFoundException({
+        code: 'CLONE_SOURCE_EMPTY',
+        message: `Source page '${dto.fromPageKey}' has no sections`,
+      });
+    }
+
+    if (sourceDocs.length > 200) {
+      throw new BadRequestException({
+        code: 'CLONE_TOO_MANY',
+        message: 'Cannot clone more than 200 sections at once',
+      });
+    }
+
+    const prefix = `${dto.fromPageKey}-`;
+    const candidates = sourceDocs.map((doc) => {
+      const source = this.toSectionPayload(doc);
+      const parsedSource = sectionSchema.safeParse(source);
+      if (!parsedSource.success) {
+        throw new BadRequestException({
+          code: 'VALIDATION_FAILED',
+          message: `Source section '${source.key}' is invalid`,
+        });
+      }
+      if (!source.key.startsWith(prefix)) {
+        throw new BadRequestException({
+          code: 'CLONE_KEY_INVALID',
+          message:
+            `Source section key '${source.key}' must start with '${prefix}' to be cloned`,
+        });
+      }
+      const suffix = source.key.slice(prefix.length);
+      const target: Section = {
+        ...parsedSource.data,
+        key: `${dto.toPageKey}-${suffix}`,
+        pageKey: dto.toPageKey,
+      };
+      const parsedTarget = sectionSchema.safeParse(target);
+      if (!parsedTarget.success) {
+        throw new BadRequestException({
+          code: 'CLONE_KEY_INVALID',
+          message: `Derived clone key '${target.key}' is invalid`,
+        });
+      }
+      return parsedTarget.data;
+    });
+
+    const existingTarget = await this.sectionModel
+      .find({ pageKey: dto.toPageKey })
+      .select({ key: 1 })
+      .lean()
+      .exec();
+    if (existingTarget.length > 0 && dto.replace !== true) {
+      throw new ConflictException({
+        code: 'CLONE_TARGET_EXISTS',
+        message:
+          `Target page '${dto.toPageKey}' already has ${existingTarget.length} section(s); resend with replace: true to overwrite`,
+      });
+    }
+    const replacedKeys = existingTarget.map((doc) => doc.key as string);
+
+    const version = await this.transactions.run(async (session) => {
+      if (dto.replace === true) {
+        await this.sectionModel
+          .deleteMany({ pageKey: dto.toPageKey })
+          .session(session)
+          .exec();
+      }
+
+      await this.sectionModel.insertMany(
+        candidates.map((section, index) => ({
+          key: section.key,
+          pageKey: section.pageKey,
+          type: section.type,
+          title: section.title,
+          content: section.content,
+          settings: section.settings ?? {},
+          sortOrder: index,
+          isActive: section.isActive ?? true,
+        })),
+        { session },
+      );
+
+      const nextVersion = await this.revisionService.bumpVersion({ session });
+      await this.outbox.record(session, {
+        topic: 'cms.updated',
+        aggregateType: 'section',
+        aggregateId: dto.toPageKey,
+        payload: {
+          scope: 'sections',
+          version: nextVersion,
+          pageKey: dto.toPageKey,
+        },
+      });
+      return nextVersion;
+    });
+
+    await this.cacheService.del(this.cacheService.sectionsPageKey(dto.toPageKey));
+    for (const key of [...replacedKeys, ...candidates.map((s) => s.key)]) {
+      await this.cacheService.del(this.cacheService.sectionKey(key));
+    }
+    await this.revalidate.revalidate([storefrontTags.sections(dto.toPageKey)]);
+
+    return { sections: candidates, version };
   }
 
   private toSectionPayload(doc: any): Section {

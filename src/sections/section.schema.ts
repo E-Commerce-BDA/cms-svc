@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { HydratedDocument } from 'mongoose';
 import { Schema as MongooseSchema } from 'mongoose';
+import { SECTION_TYPES } from '@ecom/contracts';
 
 export type SectionDocument = HydratedDocument<SectionModel>;
 
@@ -12,18 +13,12 @@ export class SectionModel {
   @Prop({ type: String, required: true, index: true })
   pageKey: string;
 
+  // Derived from contracts so adding a SECTION_TYPE cannot be rejected by
+  // Mongo before Zod ever sees it.
   @Prop({
     type: String,
     required: true,
-    enum: [
-      'hero',
-      'banner',
-      'featured_products',
-      'category_showcase',
-      'brand_strip',
-      'blog_teaser',
-      'testimonial',
-    ],
+    enum: [...SECTION_TYPES],
   })
   type: string;
 

@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
  *
  * This list is not free-form: `frontend/storefront/lib/cms/tags.ts` owns the
  * same vocabulary and answers `400 INVALID_TAGS` for anything outside its
- * allowlist (page keys are `[a-z0-9-]{1,32}`). The two lists are authored
+ * allowlist (page keys are `[a-z0-9-]{1,80}`). The two lists are authored
  * together on purpose — a tag cms-svc invents would be rejected silently.
  */
 export const storefrontTags = {
@@ -16,7 +16,7 @@ export const storefrontTags = {
   // cms-008: the CMS-home wave gave the storefront readers for sections, the
   // footer document, the blog list and CMS pages. Each page key and slug maps
   // to exactly one tag string; the storefront's `lib/cms/tags.ts` allowlist is
-  // authored against these same shapes (`[a-z0-9-]{1,32}`).
+  // authored against these same shapes (`[a-z0-9-]{1,80}`).
   sections: (pageKey: string): string => `cms:sections:${pageKey}`,
   footer: 'cms:footer',
   blogs: 'cms:blogs',

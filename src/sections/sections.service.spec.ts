@@ -409,4 +409,161 @@ describe('SectionsService', () => {
       'cms:sections:homepage',
     ]);
   });
+
+  const pdpSourceDocs = [
+    {
+      key: 'pdp-default-description',
+      pageKey: 'pdp-default',
+      type: 'pdp_description',
+      title: 'Description',
+      content: {},
+      settings: {},
+      sortOrder: 0,
+      isActive: true,
+    },
+    {
+      key: 'pdp-default-details',
+      pageKey: 'pdp-default',
+      type: 'pdp_details',
+      title: 'Details',
+      content: {},
+      settings: {},
+      sortOrder: 1,
+      isActive: true,
+    },
+  ];
+  const pdpTarget = 'pdp-00000000-0000-4000-8000-000000000001';
+
+  const buildCloneService = (
+    sourceDocs: any[] = pdpSourceDocs,
+    existingTarget: any[] = [],
+  ) => {
+    const sectionModel = {
+      find: vi.fn((filter: any) => {
+        if (filter.pageKey === 'pdp-default') {
+          return {
+            sort: vi.fn().mockReturnValue({
+              lean: () => ({
+                exec: vi.fn().mockResolvedValue(sourceDocs),
+              }),
+            }),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue({
+            lean: () => ({
+              exec: vi.fn().mockResolvedValue(existingTarget),
+            }),
+          }),
+        };
+      }),
+      insertMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockReturnValue({
+        session: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(undefined),
+        }),
+      }),
+    };
+    const cacheService = {
+      sectionsPageKey: vi.fn((pageKey: string) => `cms:sections:${pageKey}`),
+      sectionKey: vi.fn((key: string) => `cms:section:${key}`),
+      del: vi.fn().mockResolvedValue(undefined),
+    };
+    const revalidate = { revalidate: vi.fn().mockResolvedValue(undefined) };
+    const service = buildService(
+      sectionModel as any,
+      { bumpVersion: vi.fn().mockResolvedValue(11) } as any,
+      cacheService as any,
+      {} as any,
+      revalidate,
+    );
+    return { service, sectionModel, cacheService, revalidate };
+  };
+
+  it('clones sections to a new product page with derived keys', async () => {
+    const { service, sectionModel, revalidate } = buildCloneService();
+
+    const res = await service.cloneSections({
+      fromPageKey: 'pdp-default',
+      toPageKey: pdpTarget,
+    });
+
+    expect(res.version).toBe(11);
+    expect(res.sections.map((section) => section.key)).toEqual([
+      `${pdpTarget}-description`,
+      `${pdpTarget}-details`,
+    ]);
+    expect(res.sections.map((section) => section.sortOrder)).toEqual([0, 1]);
+    expect(sectionModel.insertMany).toHaveBeenCalledTimes(1);
+    expect(sectionModel.deleteMany).not.toHaveBeenCalled();
+    expect(outbox.record).toHaveBeenCalledTimes(1);
+    expect(revalidate.revalidate).toHaveBeenCalledWith([
+      `cms:sections:${pdpTarget}`,
+    ]);
+  });
+
+  it('rejects cloning into a populated target without replace', async () => {
+    const { service } = buildCloneService(pdpSourceDocs, [
+      { key: `${pdpTarget}-description` },
+    ]);
+
+    await expect(
+      service.cloneSections({
+        fromPageKey: 'pdp-default',
+        toPageKey: pdpTarget,
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('replaces a populated target when replace is true', async () => {
+    const { service, sectionModel } = buildCloneService(pdpSourceDocs, [
+      { key: `${pdpTarget}-old` },
+    ]);
+
+    const res = await service.cloneSections({
+      fromPageKey: 'pdp-default',
+      toPageKey: pdpTarget,
+      replace: true,
+    });
+
+    expect(res.sections).toHaveLength(2);
+    expect(sectionModel.deleteMany).toHaveBeenCalledWith({
+      pageKey: pdpTarget,
+    });
+    expect(sectionModel.insertMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an empty source, same page, and unprefixed keys', async () => {
+    const empty = buildCloneService([], []);
+    await expect(
+      empty.service.cloneSections({
+        fromPageKey: 'pdp-default',
+        toPageKey: pdpTarget,
+      }),
+    ).rejects.toThrow(NotFoundException);
+
+    const same = buildCloneService();
+    await expect(
+      same.service.cloneSections({
+        fromPageKey: 'pdp-default',
+        toPageKey: 'pdp-default',
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    const unprefixed = buildCloneService(
+      [
+        {
+          ...pdpSourceDocs[0],
+          key: 'unrelated-key',
+        },
+      ],
+      [],
+    );
+    await expect(
+      unprefixed.service.cloneSections({
+        fromPageKey: 'pdp-default',
+        toPageKey: pdpTarget,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
 });

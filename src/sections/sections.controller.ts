@@ -12,9 +12,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  type CloneSections,
   type Section,
   type SectionListResponse,
   type SectionReorder,
+  cloneSectionsSchema,
   sectionReorderSchema,
   sectionSchema,
 } from '@ecom/contracts';
@@ -53,6 +55,16 @@ export class SectionsController {
   ): Promise<{ section: Section }> {
     const section = await this.sectionsService.createSection(body as Section);
     return { section };
+  }
+
+  @Post('admin/sections/clone')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async cloneSections(
+    @Body(new ZodValidationPipe(cloneSectionsSchema)) body: unknown,
+  ): Promise<SectionListResponse> {
+    return this.sectionsService.cloneSections(body as CloneSections);
   }
 
   @Patch('admin/sections/reorder')
