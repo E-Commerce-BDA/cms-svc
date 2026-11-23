@@ -35,7 +35,6 @@ export function sniffImageMimeType(buffer: Buffer): MediaMimeType | null {
     }
   }
 
-  // RIFF container: 'RIFF' + 4-byte size + 'WEBP'.
   if (
     buffer.length >= 12 &&
     asciiAt(buffer, 0, 4) === 'RIFF' &&

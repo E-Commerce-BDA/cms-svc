@@ -183,7 +183,6 @@ describe('CMS Media Subsystem (e2e)', () => {
   });
 
   it('in-use guard rejects media deletion with 409 when referenced in section', async () => {
-    // Create a section referencing this media key
     await request(app.getHttpServer())
       .post('/api/v1/cms/admin/sections')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -200,7 +199,6 @@ describe('CMS Media Subsystem (e2e)', () => {
       })
       .expect(201);
 
-    // Attempting to delete media must be rejected with 409
     const delRes = await request(app.getHttpServer())
       .delete(`/api/v1/cms/admin/media/${uploadedMediaId}`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -208,7 +206,6 @@ describe('CMS Media Subsystem (e2e)', () => {
 
     expect(delRes.body.error.code).toBe('MEDIA_IN_USE');
 
-    // Clean up the section
     await request(app.getHttpServer())
       .delete('/api/v1/cms/admin/sections/media-test-section')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -221,7 +218,6 @@ describe('CMS Media Subsystem (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(204);
 
-    // Verify media list no longer contains this media
     const listRes = await request(app.getHttpServer())
       .get('/api/v1/cms/admin/media')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -232,7 +228,6 @@ describe('CMS Media Subsystem (e2e)', () => {
     );
     expect(found).toBeUndefined();
 
-    // Verify public file route returns 404
     await request(app.getHttpServer()).get(uploadedMediaUrl).expect(404);
   });
 });

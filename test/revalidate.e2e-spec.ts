@@ -233,7 +233,6 @@ describe('CMS revalidation (e2e)', () => {
 
     expect(recorded).toHaveLength(0);
 
-    // The same post published: now the list tag must drop.
     await request(app.getHttpServer())
       .post('/api/v1/cms/admin/blogs')
       .set('Authorization', `Bearer ${adminToken}`)

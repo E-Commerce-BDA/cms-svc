@@ -262,7 +262,6 @@ describe('BlogsService', () => {
         {} as never,
       );
 
-      // limit = 1, returned 2 items -> hasMore = true
       const res = await service.getPublicBlogs(undefined, undefined, 1);
       expect(res.data).toHaveLength(1);
       expect(res.nextCursor).not.toBeNull();
@@ -557,7 +556,6 @@ describe('BlogsService', () => {
           payload: expect.objectContaining({
             blogId: '507f1f77bcf86cd799439021',
             slug: 'live-post',
-            // A deleted post is announced as a draft.
             status: 'draft',
           }),
         }),

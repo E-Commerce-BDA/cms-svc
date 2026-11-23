@@ -146,7 +146,6 @@ describeSqs('Media resize over SQS (e2e)', () => {
       'the resize worker to write variants',
     );
 
-    // 3 widths (1920 is above the source) x 4 formats.
     expect(media.variants).toHaveLength(12);
     expect(media.width).toBe(1200);
     expect(media.height).toBe(800);

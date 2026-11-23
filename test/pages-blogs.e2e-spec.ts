@@ -341,7 +341,6 @@ describe('CMS Pages & Blogs (e2e)', () => {
     });
 
     it('supports cursor pagination across multiple published blogs', async () => {
-      // With 2 published blogs, limit=1 returns 1 blog and a nextCursor
       const page1 = await request(app.getHttpServer())
         .get('/api/v1/cms/blogs?limit=1')
         .expect(200);

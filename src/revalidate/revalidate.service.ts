@@ -64,7 +64,6 @@ export class RevalidateService {
     this.secret = config.get<string>('REVALIDATE_SECRET')?.trim() || undefined;
   }
 
-  /** False when no secret is configured; every call is then a no-op. */
   get enabled(): boolean {
     return this.secret !== undefined;
   }

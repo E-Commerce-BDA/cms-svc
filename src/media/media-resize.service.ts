@@ -98,7 +98,6 @@ export class MediaResizeService {
 
     for (const width of job.widths) {
       if (sourceWidth > 0 && width > sourceWidth) {
-        // Not an error and not a variant: the source has no pixels to give.
         continue;
       }
 

@@ -349,7 +349,6 @@ export class MediaService {
     return this.containedFile(key, variant.mimeType);
   }
 
-  /** A key that storage cannot serve is "not found", whatever the reason. */
   private async containedFile(
     key: string,
     mimeType: MediaMimeType,

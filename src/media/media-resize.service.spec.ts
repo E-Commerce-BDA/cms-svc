@@ -58,7 +58,6 @@ describe('MediaResizeService', () => {
 
     const result = await service.resize(job, IDEMPOTENCY_KEY);
 
-    // 2 widths x 2 formats. Nothing is enlarged into existence.
     expect(result).toMatchObject({ width: 800, height: 600, written: 4, skipped: 0 });
     expect(storage.read).toHaveBeenCalledWith(SOURCE_KEY);
 
@@ -156,7 +155,6 @@ describe('MediaResizeService', () => {
 
     const result = await service.resize(job, IDEMPOTENCY_KEY);
 
-    // A deleted upload resurrects nothing: retrying cannot bring the row back.
     expect(result).toMatchObject({ written: 0, skipped: 0, mediaNotFound: true });
     expect(storage.read).not.toHaveBeenCalled();
     expect(model.updateOne).not.toHaveBeenCalled();
