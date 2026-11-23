@@ -46,7 +46,6 @@ describeLive('Live Kafka delivery (e2e)', () => {
     return db.collection(OUTBOX_COLLECTION);
   }
 
-  /** Drains until this aggregate's `cms.updated` document is published. */
   async function drainUntilPublished(aggregateId: string): Promise<string> {
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const docs = await outboxCollection()

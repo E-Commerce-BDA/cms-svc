@@ -32,17 +32,10 @@ export class HealthService {
     private readonly redisService: RedisService,
   ) {}
 
-  /**
-   * Liveness: is this process able to answer HTTP?
-   * Performs no external dependency calls.
-   */
   checkLiveness(): LivenessResponse {
     return { status: 'ok' };
   }
 
-  /**
-   * Readiness: Mongo is critical, Redis is degraded.
-   */
   async checkReadiness(): Promise<ReadinessResponse> {
     let mongo: DependencyStatus = 'down';
     let redis: DependencyStatus = 'down';

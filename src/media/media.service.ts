@@ -53,7 +53,6 @@ const EXTENSION_BY_MIME: Record<MediaMimeType, string> = {
   'image/avif': 'avif',
 };
 
-/** A rendition has no row of its own, so its type comes from its format. */
 const VARIANT_MIME_TYPES: Record<MediaVariant['format'], MediaMimeType> = {
   png: 'image/png',
   jpeg: 'image/jpeg',
@@ -61,7 +60,6 @@ const VARIANT_MIME_TYPES: Record<MediaVariant['format'], MediaMimeType> = {
   avif: 'image/avif',
 };
 
-/** Who is asking for the bytes: the open file route or the admin one. */
 export type MediaViewer = 'public' | 'admin';
 
 export interface StreamableMediaFile {

@@ -20,9 +20,7 @@ export type CmsEventTopic = 'cms.updated' | 'blog.updated';
 
 export interface CmsUpdatedWrite {
   topic: 'cms.updated';
-  /** `cms` unless the caller names a narrower aggregate (e.g. a single page). */
   aggregateType?: string;
-  /** What the event is about: the slug, the page key, or the scope name. */
   aggregateId: string;
   payload: CmsUpdatedPayload;
   occurredAt?: Date;

@@ -7,7 +7,6 @@ import {
   type StoragePort,
 } from './storage.port.js';
 
-/** True when `candidate` is strictly below `baseDir` on the resolved path. */
 function isContained(baseDir: string, candidate: string): boolean {
   const relative = path.relative(baseDir, candidate);
   return (
@@ -105,10 +104,7 @@ export class LocalDiskStorageAdapter implements StoragePort, OnModuleInit {
     }
   }
 
-  /**
-   * Reads through `resolvePath` rather than `resolveKey`, so a symlink planted
-   * under the root is rejected here exactly as it is on the delivery routes.
-   */
+  // ADR-media: one containment resolver (see Documentation/ARCHITECTURE_DECISIONS.md)
   async read(key: string): Promise<Buffer> {
     return fs.promises.readFile(await this.resolvePath(key));
   }

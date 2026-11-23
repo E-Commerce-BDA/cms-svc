@@ -30,7 +30,6 @@ interface RecordedRequest {
 
 const SECRET = 'e2e-revalidate-secret';
 const recorded: RecordedRequest[] = [];
-/** Flipped per test: `ok` answers 200, `fail` answers 500. */
 let mode: 'ok' | 'fail' = 'ok';
 
 const stub: Server = createServer((req: IncomingMessage, res) => {

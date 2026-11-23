@@ -10,7 +10,6 @@ const PNG_BYTES = Buffer.from([
   0x60, 0x82,
 ]);
 
-/** ISO-BMFF header: 4-byte box size, `ftyp`, major brand, minor version. */
 function isoBmff(majorBrand: string): Buffer {
   const header = Buffer.alloc(16);
   header.writeUInt32BE(16, 0);

@@ -19,7 +19,6 @@ const MIME_BY_FORMAT: Record<VariantFormat, string> = {
   png: 'image/png',
 };
 
-/** `jpeg` is stored with the three-letter extension the key pattern allows. */
 const EXTENSION_BY_FORMAT: Record<VariantFormat, string> = {
   webp: 'webp',
   avif: 'avif',
@@ -27,7 +26,6 @@ const EXTENSION_BY_FORMAT: Record<VariantFormat, string> = {
   png: 'png',
 };
 
-/** What one run of the worker did, for the log line. */
 export interface MediaResizeResult {
   mediaId: string;
   width?: number;

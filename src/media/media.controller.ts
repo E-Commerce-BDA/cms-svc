@@ -42,7 +42,6 @@ import {
   type UploadedMediaFile,
 } from './media.service.js';
 
-/** Mutable visibility means the open route cannot promise `immutable`. */
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, must-revalidate';
 const ADMIN_CACHE_CONTROL = 'private, no-store';
 

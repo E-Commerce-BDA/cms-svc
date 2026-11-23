@@ -14,7 +14,6 @@ const job: ResizeImageJob = {
   widths: [320, 640],
 };
 
-/** 800 px wide, so `400` is a rendition and `1920` would be an enlargement. */
 async function sourcePng(width = 800, height = 600): Promise<Buffer> {
   return sharp({
     create: { width, height, channels: 3, background: '#336699' },

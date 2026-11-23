@@ -23,11 +23,9 @@ export const storefrontTags = {
   pages: (slug: string): string => `cms:pages:${slug}`,
 } as const;
 
-/** A slow invalidation is worse than a skipped one: the write already committed. */
 export const REVALIDATE_TIMEOUT_MS = 2000;
 
 export interface RevalidateStats {
-  /** Calls the storefront accepted. */
   sent: number;
   /** Calls that failed, timed out or were rejected. */
   failed: number;

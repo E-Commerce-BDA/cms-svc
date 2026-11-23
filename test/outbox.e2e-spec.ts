@@ -17,13 +17,8 @@ import { CmsOutbox } from '../src/outbox/cms-outbox.js';
 import { PageModel, type PageDocument } from '../src/pages/page.schema.js';
 import { RevisionService } from '../src/revision/revision.service.js';
 
-/** The collection `createMongoOutboxModule` is configured with in `app.module.ts`. */
 const OUTBOX_COLLECTION = 'cms_outbox';
 
-/**
- * One `cms_outbox` document. A type alias (not an interface) so it stays
- * assignable to the driver's `Document` constraint without an index signature.
- */
 type CmsOutboxDoc = {
   _id: string;
   event_id: string;
@@ -49,7 +44,6 @@ describe('CMS outbox (e2e)', () => {
   let publisher: RecordingPublisher;
   let adminToken: string;
 
-  /** Every aggregate this suite writes events for; assertions and cleanup use it. */
   const aggregateIds: string[] = [];
 
   function track(aggregateId: string): string {

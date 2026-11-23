@@ -52,7 +52,6 @@ export class FooterService {
     return response;
   }
 
-  /** Replace semantics, like the theme: the body is the whole footer document. */
   async updateFooter(footer: Footer): Promise<FooterResponse> {
     const version = await this.transactions.run(async (session) => {
       await this.footerModel

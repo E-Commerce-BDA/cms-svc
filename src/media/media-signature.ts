@@ -14,7 +14,6 @@ const PNG_SIGNATURE = Buffer.from([
 ]);
 const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
 
-/** ISO/IEC 14496-12 box brand of the AVIF image sequence and still formats. */
 const AVIF_BRANDS = ['avif', 'avis'];
 
 function asciiAt(buffer: Buffer, offset: number, length: number): string {

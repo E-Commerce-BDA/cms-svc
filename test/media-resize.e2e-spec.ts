@@ -47,7 +47,6 @@ if (ENDPOINT) {
 
 const describeSqs = ENDPOINT ? describe : describe.skip;
 
-/** 1200 px wide, so 320/640/1024 render and 1920 is correctly skipped. */
 async function sourcePng(): Promise<Buffer> {
   return sharp({
     create: { width: 1200, height: 800, channels: 3, background: '#2f6f4f' },
@@ -63,7 +62,6 @@ describeSqs('Media resize over SQS (e2e)', () => {
   let queue: TaskQueuePort;
   let adminToken: string;
   const storageDir = path.join(os.tmpdir(), `cms-resize-e2e-${process.pid}`);
-  /** Filled by the upload test, replayed by the idempotency test. */
   let uploaded: { id: string; key: string };
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
