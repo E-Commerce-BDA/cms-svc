@@ -1,4 +1,3 @@
-import * as fs from 'node:fs';
 import {
   Body,
   Controller,
@@ -6,7 +5,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Logger,
   NotFoundException,
   Param,
   Post,
@@ -38,9 +36,9 @@ import { UploadSizeGuard } from './guards/upload-size.guard.js';
 import {
   MAX_FILE_SIZE_BYTES,
   MediaService,
-  type StreamableMediaFile,
   type UploadedMediaFile,
 } from './media.service.js';
+import { sendStoredFile } from './send-stored-file.js';
 
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, must-revalidate';
 const ADMIN_CACHE_CONTROL = 'private, no-store';
@@ -48,7 +46,6 @@ const ADMIN_CACHE_CONTROL = 'private, no-store';
 @Controller('cms')
 export class MediaController {
   private static readonly FILE_KEY_MARKER = '/cms/media/file/';
-  private readonly logger = new Logger(MediaController.name);
 
   constructor(private readonly mediaService: MediaService) {}
 
@@ -122,7 +119,7 @@ export class MediaController {
   async serveFile(@Req() req: Request, @Res() res: Response): Promise<void> {
     const key = this.extractKey(req);
     const file = await this.mediaService.streamablePath(key, 'public');
-    await this.sendFile(res, file, PUBLIC_CACHE_CONTROL);
+    await sendStoredFile(res, file, PUBLIC_CACHE_CONTROL);
   }
 
   /**
@@ -145,7 +142,7 @@ export class MediaController {
     }
 
     const file = await this.mediaService.streamablePath(media.key, 'admin');
-    await this.sendFile(res, file, ADMIN_CACHE_CONTROL);
+    await sendStoredFile(res, file, ADMIN_CACHE_CONTROL);
   }
 
   /**
@@ -158,46 +155,5 @@ export class MediaController {
     return markerIndex === -1
       ? ''
       : rawPath.slice(markerIndex + MediaController.FILE_KEY_MARKER.length);
-  }
-
-  /** Everything is decided before the first header, so a miss stays a JSON 404. */
-  private async sendFile(
-    res: Response,
-    file: StreamableMediaFile,
-    cacheControl: string,
-  ): Promise<void> {
-    const stat = await fs.promises.stat(file.absolutePath).catch(() => null);
-    if (!stat?.isFile()) {
-      throw new NotFoundException({
-        code: 'MEDIA_NOT_FOUND',
-        message: 'File not found',
-      });
-    }
-
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Cache-Control', cacheControl);
-    res.setHeader('Content-Length', stat.size);
-
-    await new Promise<void>((resolve, reject) => {
-      res.sendFile(file.absolutePath, (error?: Error) => {
-        if (!error) {
-          resolve();
-          return;
-        }
-        if (res.headersSent) {
-          // The status and the headers are already on the wire; the only
-          // honest thing left is to cut the body short.
-          this.logger.error(
-            `Media stream failed after the headers were sent: ${error.message}`,
-          );
-          res.end();
-          resolve();
-          return;
-        }
-        reject(error);
-      });
-    });
   }
 }

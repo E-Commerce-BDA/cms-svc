@@ -93,6 +93,28 @@ POST /cms/admin/media ──► storage.save(bytes) + media row
   barrel also re-exports the Kafka consumer surface, and this service has no
   Kafka consumer.
 
+## Private media URLs (`cms-010`)
+
+A private asset cannot be put on a public page with an admin token, so an admin
+can mint a short-lived capability:
+
+```
+GET /cms/admin/media/:id/signed-url?expiresIn=60  (admin)
+   → { url: "/api/v1/cms/media/signed/<key>?exp=<unix>&sig=<hmac>", expiresAt }
+GET /api/v1/cms/media/signed/<key>?exp=…&sig=…    (no credential)
+```
+
+- The key comes from the media row and is checked through the same
+  `streamablePath` resolver before it is signed; the redeem route repeats that
+  lookup and containment check after verifying the HMAC and the expiry. A
+  capability cannot name a path the issuing route could not have served.
+- The signature is HMAC-SHA256 over context + key + `exp`, using a key derived
+  from `JWT_SECRET` with domain separation. No new deployment variable, and no
+  secret in the URL. Tampered or expired URLs answer the same generic 404 as a
+  missing file; responses are `private, no-store`.
+- Default lifetime is 5 minutes, capped at 1 hour. `expiresIn` must be a
+  positive number of seconds.
+
 ## Telling the storefront (`cms-007`)
 
 The storefront caches CMS reads in Next's Data Cache, which lives in its own

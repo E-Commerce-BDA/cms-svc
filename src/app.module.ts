@@ -14,6 +14,7 @@ import { FooterModule } from './footer/footer.module.js';
 import { PagesModule } from './pages/pages.module.js';
 import { BlogsModule } from './blogs/blogs.module.js';
 import { MediaModule } from './media/media.module.js';
+import { MediaSignedModule } from './media/media-signed.module.js';
 import { RevalidateModule } from './revalidate/revalidate.module.js';
 
 @Module({
@@ -45,6 +46,7 @@ import { RevalidateModule } from './revalidate/revalidate.module.js';
     PagesModule,
     BlogsModule,
     MediaModule,
+    MediaSignedModule,
   ],
 })
 export class AppModule {}
