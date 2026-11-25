@@ -289,13 +289,40 @@ export class MediaService {
       });
     }
 
-    // The renditions belong to the upload, so they leave with it: a row that is
-    // gone cannot vouch for a file any more, and nothing would ever collect it.
-    await Promise.all([
-      this.storage.delete(media.key),
-      ...(media.variants ?? []).map((variant) => this.storage.delete(variant.key)),
-    ]);
+    await this.purgeStoredObjects(media);
     await this.mediaModel.findByIdAndDelete(media._id).exec();
+  }
+
+  /**
+   * The renditions belong to the upload, so they leave with it: a row that is
+   * gone cannot vouch for a file any more, and nothing would ever collect it.
+   *
+   * A missing object is success, not a failure. The resize worker is
+   * at-least-once and a removal can be retried after a partial purge, so a
+   * second pass must not fail on a file the first pass already unlinked.
+   * Other storage errors still fail the row deletion, leaving it to be retried
+   * with its manifest intact.
+   *
+   * Rejected: a nightly sweep over the bucket — with no owning row there is no
+   * signal for which objects may be removed.
+   */
+  private async purgeStoredObjects(media: MediaDocumentLike): Promise<void> {
+    const keys = new Set([
+      media.key,
+      ...(media.variants ?? []).map((variant) => variant.key),
+    ]);
+
+    await Promise.all(
+      [...keys].map(async (key) => {
+        try {
+          await this.storage.delete(key);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+          }
+        }
+      }),
+    );
   }
 
   async findByKey(key: string): Promise<Media | null> {

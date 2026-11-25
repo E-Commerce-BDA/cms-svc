@@ -104,6 +104,14 @@ describe('LocalDiskStorageAdapter', () => {
     await expect(storage.exists(VALID_KEY)).resolves.toBe(false);
   });
 
+  it('treats a second delete of the same key as success', async () => {
+    await storage.save(Buffer.from('bytes'), VALID_KEY, 'image/png');
+
+    await expect(storage.delete(VALID_KEY)).resolves.toBeUndefined();
+    await expect(storage.delete(VALID_KEY)).resolves.toBeUndefined();
+    await expect(storage.exists(VALID_KEY)).resolves.toBe(false);
+  });
+
   it('refuses to write or delete through a rejected key', async () => {
     await expect(
       storage.save(Buffer.from('bytes'), '../escape.png', 'image/png'),

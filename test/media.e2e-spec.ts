@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Test, TestingModule } from '@nestjs/testing';
-import { getConnectionToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import type { Connection } from 'mongoose';
+import { Types, type Connection, type Model } from 'mongoose';
 import request from 'supertest';
 import { describe, beforeAll, afterAll, it, expect, vi } from 'vitest';
 import { SQS_TASK_QUEUE } from '@ecom/messaging/nest/tasks';
@@ -12,10 +12,15 @@ import type { TaskQueuePort } from '@ecom/messaging';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { JWT_AUDIENCE, JWT_ISSUER } from '../src/auth/auth.constants.js';
+import {
+  MediaModel,
+  type MediaDocument,
+} from '../src/media/media.schema.js';
 
 describe('CMS Media Subsystem (e2e)', () => {
   let app: NestExpressApplication;
   let connection: Connection;
+  let mediaModel: Model<MediaDocument>;
   let jwtService: JwtService;
   let adminToken: string;
   let customerToken: string;
@@ -35,6 +40,7 @@ describe('CMS Media Subsystem (e2e)', () => {
     await app.init();
 
     connection = app.get<Connection>(getConnectionToken());
+    mediaModel = app.get<Model<MediaDocument>>(getModelToken(MediaModel.name));
     jwtService = app.get<JwtService>(JwtService);
 
     adminToken = jwtService.sign(
@@ -229,5 +235,53 @@ describe('CMS Media Subsystem (e2e)', () => {
     expect(found).toBeUndefined();
 
     await request(app.getHttpServer()).get(uploadedMediaUrl).expect(404);
+  });
+
+  it('collects rendition files with the row and tolerates a repeated removal', async () => {
+    const upload = await request(app.getHttpServer())
+      .post('/api/v1/cms/admin/media')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', dummyPngBuffer, 'gc.png')
+      .expect(201);
+    const id = upload.body.media.id as string;
+    const key = upload.body.media.key as string;
+    const variantKey = key.replace(/\.[^.]+$/, '-320.webp');
+    const variantPath = path.join(tempDir, ...variantKey.split('/'));
+    await fs.promises.mkdir(path.dirname(variantPath), { recursive: true });
+    await fs.promises.writeFile(variantPath, Buffer.from('variant-bytes'));
+
+    await mediaModel
+      .updateOne(
+        { _id: new Types.ObjectId(id) },
+        {
+          $set: {
+            variants: [
+              {
+                width: 320,
+                format: 'webp',
+                key: variantKey,
+                url: `/api/v1/cms/media/file/${variantKey}`,
+                bytes: 13,
+              },
+            ],
+          },
+        },
+      )
+      .exec();
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/cms/admin/media/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(204);
+
+    expect(fs.existsSync(path.join(tempDir, ...key.split('/')))).toBe(false);
+    expect(fs.existsSync(variantPath)).toBe(false);
+
+    // The row is already gone. A second delivery is a clean 404 (never a 500
+    // from a missing file), and the objects stay gone.
+    await request(app.getHttpServer())
+      .delete(`/api/v1/cms/admin/media/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
   });
 });

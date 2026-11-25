@@ -377,6 +377,112 @@ describe('MediaService', () => {
         sampleMediaDoc._id,
       );
     });
+
+    it('purges every rendition key along with the original', async () => {
+      const withVariants = {
+        ...sampleMediaDoc,
+        variants: [
+          {
+            width: 320,
+            format: 'webp',
+            key: 'media/2026/10/banner-320.webp',
+            url: '/api/v1/cms/media/file/media/2026/10/banner-320.webp',
+            bytes: 10,
+          },
+          {
+            width: 640,
+            format: 'avif',
+            key: 'media/2026/10/banner-640.avif',
+            url: '/api/v1/cms/media/file/media/2026/10/banner-640.avif',
+            bytes: 20,
+          },
+        ],
+      };
+      const mediaModel = {
+        findOne: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(withVariants),
+        }),
+        findByIdAndDelete: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(withVariants),
+        }),
+      };
+      const storage = { delete: vi.fn().mockResolvedValue(undefined) };
+      const service = new MediaService(
+        mediaModel as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        storage as never,
+        {} as never,
+      );
+
+      await service.deleteMedia('507f1f77bcf86cd799439031');
+
+      expect(storage.delete).toHaveBeenCalledTimes(3);
+      expect(storage.delete).toHaveBeenCalledWith(withVariants.key);
+      for (const variant of withVariants.variants) {
+        expect(storage.delete).toHaveBeenCalledWith(variant.key);
+      }
+      expect(mediaModel.findByIdAndDelete).toHaveBeenCalledWith(
+        withVariants._id,
+      );
+    });
+
+    it('succeeds on a retry when the files are already gone', async () => {
+      const mediaModel = {
+        findOne: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(sampleMediaDoc),
+        }),
+        findByIdAndDelete: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(sampleMediaDoc),
+        }),
+      };
+      // A second delivery sees missing objects: ENOENT is not a failed job.
+      const storage = {
+        delete: vi.fn().mockRejectedValue(Object.assign(new Error('gone'), { code: 'ENOENT' })),
+      };
+      const service = new MediaService(
+        mediaModel as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        storage as never,
+        {} as never,
+      );
+
+      await expect(
+        service.deleteMedia('507f1f77bcf86cd799439031'),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.deleteMedia('507f1f77bcf86cd799439031'),
+      ).resolves.toBeUndefined();
+      expect(mediaModel.findByIdAndDelete).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the row when a real storage error occurs', async () => {
+      const mediaModel = {
+        findOne: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(sampleMediaDoc),
+        }),
+        findByIdAndDelete: vi.fn().mockReturnValue({ exec: vi.fn() }),
+      };
+      const storage = {
+        delete: vi.fn().mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' })),
+      };
+      const service = new MediaService(
+        mediaModel as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        { exists: vi.fn().mockResolvedValue(null) } as never,
+        storage as never,
+        {} as never,
+      );
+
+      await expect(
+        service.deleteMedia('507f1f77bcf86cd799439031'),
+      ).rejects.toThrow('denied');
+      expect(mediaModel.findByIdAndDelete).not.toHaveBeenCalled();
+    });
   });
 
   describe('visibility', () => {

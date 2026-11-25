@@ -86,6 +86,10 @@ POST /cms/admin/media ──► storage.save(bytes) + media row
   widths above the source are dropped rather than upscaled.
 - A variant is served by `GET /cms/media/file/<key>` like any other media,
   because its key still matches `mediaKeySchema`.
+- Removing a media row also unlinks the original and every rendition in its
+  manifest. The purge is idempotent (an already-missing file is success), so a
+  retry after a partial removal cannot fail; a real storage error keeps the row
+  so the removal can be retried with its manifest intact.
 - The handler is published as a token by `MediaResizeModule` and injected into
   `createSqsTaskModule`, since a dynamic module cannot see this module's
   providers.
