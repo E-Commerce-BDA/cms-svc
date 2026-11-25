@@ -191,9 +191,15 @@ describe('CMS outbox (e2e)', () => {
     expect(doc!.envelope).toMatchObject({
       id: doc!.event_id,
       type: 'cms.updated',
+      version: 1,
       producer: 'cms-svc',
+      // 2.0.0 makes the idempotency key explicit rather than defaulting it at
+      // read time; the aliases it replaced are gone from the stored envelope.
+      idempotencyKey: doc!.event_id,
       payload: { scope: 'pages', key: slug },
     });
+    expect(doc!.envelope).not.toHaveProperty('topic');
+    expect(doc!.envelope).not.toHaveProperty('eventType');
     expect(typeof (doc!.envelope as { payload: { version: number } }).payload.version).toBe(
       'number',
     );

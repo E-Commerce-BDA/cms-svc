@@ -143,6 +143,54 @@ PUT /cms/admin/navigation ──► Mongo commit + outbox row
 - The e2e suite blanks the secret in `test/setup-env.ts`; `test/revalidate.e2e-spec.ts`
   boots a stub storefront and asserts the exact path, header and tag list.
 
+## Outbox envelope backfill (contracts 2.0.0)
+
+`@ecom/contracts` 2.0.0 replaced the dual-written 1.x envelope with one strict
+canonical shape: `type`, `version` and `idempotencyKey` are required and the
+`topic` / `eventType` aliases are rejected. The relay publishes the stored
+envelope verbatim, so a `cms_outbox` row still `pending` at cutover would be
+refused by every 2.0.0 consumer. The one-shot migration rewrites those rows
+before a relay built on `@ecom/messaging` 0.6.0 starts:
+
+```powershell
+pnpm build
+node --env-file=.env dist/outbox/outbox-backfill.cli.js --dry-run
+node --env-file=.env dist/outbox/outbox-backfill.cli.js
+```
+
+Or through the package script (applies the rewrite):
+
+```powershell
+pnpm backfill:outbox
+```
+
+- Run it with cms-svc **stopped**: a row must not be claimed between the read
+  and the rewrite. Only `status: "pending"` documents are touched, so published
+  history is never rewritten and failed rows stay parked.
+- The event name comes from the row's `event_type` field, not an envelope alias.
+  Missing `version` defaults to `1` and a missing `idempotencyKey` falls back to
+  the event id — the same values 1.x used to supply when reading. Payloads are
+  preserved byte-for-byte.
+- It is idempotent: an envelope that is already canonical is reported
+  `unchanged`, so a second run writes nothing. A row whose `event_type` is not a
+  registered topic, or that cannot be made canonical, is skipped and makes the
+  CLI exit `1` — a skipped row still cannot be relayed.
+- `--collection <name>` and `--batch <n>` override the default `cms_outbox` and
+  batch size `500`. `--dry-run` reports what would change without writing.
+- Verify afterwards; this should print `0`:
+
+```javascript
+db.cms_outbox.countDocuments({
+  status: 'pending',
+  $or: [
+    { 'envelope.topic': { $exists: true } },
+    { 'envelope.eventType': { $exists: true } },
+    { 'envelope.version': { $exists: false } },
+    { 'envelope.idempotencyKey': { $exists: false } },
+  ],
+});
+```
+
 ## Environment
 
 | Variable | Purpose |
