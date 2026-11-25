@@ -9,9 +9,12 @@ import type { Connection } from 'mongoose';
 import type { Model } from 'mongoose';
 import sharp from 'sharp';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TASK_QUEUES } from '@ecom/contracts';
-import { SQS_TASK_QUEUE } from '@ecom/messaging/nest/tasks';
+import {
+  SQS_TASK_QUEUE,
+  SQS_TASK_WORKER,
+} from '@ecom/messaging/nest/tasks';
 import type { TaskQueuePort } from '@ecom/messaging';
 import { JWT_AUDIENCE, JWT_ISSUER } from '../src/auth/auth.constants.js';
 import { MediaModel, type MediaDocument } from '../src/media/media.schema.js';
@@ -107,6 +110,10 @@ describeSqs('Media resize over SQS (e2e)', () => {
     connection = app.get<Connection>(getConnectionToken());
     mediaModel = app.get<Model<MediaDocument>>(getModelToken(MediaModel.name));
     queue = app.get<TaskQueuePort>(SQS_TASK_QUEUE);
+    // The explicit opt-in above must register the lifecycle and its poller.
+    // In a suite without it this token does not exist, which is why the whole
+    // file is skipped unless AWS_ENDPOINT_URL was named by the caller.
+    expect(app.get(SQS_TASK_WORKER, { strict: false })).toBeDefined();
 
     adminToken = app.get<JwtService>(JwtService).sign(
       { sub: '0190a1b2-admin', email: 'admin@example.com', roles: ['admin'] },
@@ -127,6 +134,28 @@ describeSqs('Media resize over SQS (e2e)', () => {
     }
     // Leave the environment as the other suites expect it.
     delete process.env.SQS_TASKS_ENABLED;
+  });
+
+  it('sends one validated envelope on upload through the shared queue port', async () => {
+    const enqueue = vi.spyOn(queue, 'enqueue');
+
+    const upload = await request(app.getHttpServer())
+      .post('/api/v1/cms/admin/media')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', await sourcePng(), 'enqueue.png')
+      .expect(201);
+
+    const mediaId = upload.body.media.id as string;
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledWith(
+      TASK_QUEUES.mediaResizeImage,
+      expect.objectContaining({
+        type: 'media.resize-image',
+        idempotencyKey: mediaId,
+        payload: expect.objectContaining({ mediaId }),
+      }),
+    );
+    enqueue.mockRestore();
   });
 
   it('enqueues on upload, renders every width and format, and serves a variant', async () => {

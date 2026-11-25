@@ -1,10 +1,8 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import {
-  SQS_TASK_QUEUE,
-  isSqsTasksEnabled,
-} from '@ecom/messaging/nest/tasks';
+import { SQS_TASK_QUEUE } from '@ecom/messaging/nest/tasks';
 import type { TaskQueuePort } from '@ecom/messaging';
 import { TASK_QUEUES, type ResizeImageJob } from '@ecom/contracts';
+import { sqsTasksEnabled } from '../config/sqs-tasks.js';
 
 /** The widths and formats every upload gets. One list, so a replay is identical. */
 export const RESIZE_FORMATS = ['webp', 'avif', 'jpeg', 'png'] as const;
@@ -19,9 +17,10 @@ export const RESIZE_WIDTHS = [320, 640, 1024, 1920] as const;
  *
  * Two deliberate non-throwing paths:
  *
- * - **Queue disabled** (`SQS_TASKS_ENABLED=false`, or `NODE_ENV=test`): a debug
- *   line and nothing else, so a developer without LocalStack and every e2e
- *   suite keep working, and no suite silently talks to a broker.
+ * - **Queue disabled** (`sqsTasksEnabled()` is false): a debug line and nothing
+ *   else, so a developer without LocalStack and every e2e suite keep working,
+ *   and no suite silently talks to a broker. The producer and the poller share
+ *   this one predicate, so a skipped enqueue can never leave a worker waiting.
  * - **Enqueue failed**: an error line and nothing else, because by this point
  *   the bytes are stored and the media document is committed. Failing the
  *   upload would hand the admin a 500 for work that succeeded; the missing
@@ -36,7 +35,7 @@ export class MediaTasksPublisher {
     @Inject(SQS_TASK_QUEUE) private readonly tasks: TaskQueuePort,
     // `@Optional()` because the default is the real rule: without it Nest tries
     // to inject a `Function` it cannot resolve. A test passes its own predicate.
-    @Optional() private readonly enabled: () => boolean = isSqsTasksEnabled,
+    @Optional() private readonly enabled: () => boolean = sqsTasksEnabled,
   ) {}
 
   async enqueueResize(job: ResizeImageJob): Promise<void> {

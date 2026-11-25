@@ -10,6 +10,7 @@ import {
   resizeImageJobSchema,
   type ResizeImageJob,
 } from '@ecom/contracts';
+import { sqsTasksEnabled } from '../config/sqs-tasks.js';
 import { SectionModel, SectionSchema } from '../sections/section.schema.js';
 import { PageModel, PageSchema } from '../pages/page.schema.js';
 import { BlogModel, BlogSchema } from '../blogs/blog.schema.js';
@@ -26,9 +27,10 @@ import {
  * Uploads are served here; the renditions are made by the worker.
  *
  * `createSqsTaskModule` supplies two things: the producer `MediaTasksPublisher`
- * enqueues through, and the poller that runs `MediaResizeService`. The poller is
- * compiled out when `SQS_TASKS_ENABLED=false` or `NODE_ENV=test`, so a suite
- * without LocalStack still boots, and no suite talks to a broker by accident.
+ * enqueues through, and the poller that runs `MediaResizeService`. Both are
+ * gated by `sqsTasksEnabled()`: outside production a poller needs an explicit
+ * `SQS_TASKS_ENABLED=true`, so a dev checkout or a suite without LocalStack
+ * still boots and no process talks to a broker by accident.
  *
  * `MediaResizeModule` is imported twice on purpose: once for the service and the
  * storage port this module's own code uses, and once *inside* the task module,
@@ -48,6 +50,7 @@ import {
       payloadSchema: resizeImageJobSchema,
       handlerToken: MEDIA_RESIZE_HANDLER,
       imports: [MediaResizeModule],
+      enabled: sqsTasksEnabled,
     }),
   ],
   controllers: [MediaController],

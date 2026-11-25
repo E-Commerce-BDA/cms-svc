@@ -77,8 +77,11 @@ POST /cms/admin/media ──► storage.save(bytes) + media row
                                one $set: width, height, variants[]
 ```
 
-- `SQS_TASKS_ENABLED=false` (the development and test default) turns the worker
-  off: the upload still succeeds and simply has no variants yet.
+- `SQS_TASKS_ENABLED=true` is the only way to opt a development or test process
+  into the worker (`sqsTasksEnabled()`); the producer uses the same predicate,
+  so with it unset the upload still succeeds and simply has no variants yet.
+  Production defaults on and can still opt out explicitly. LocalStack is started
+  by hand — there is no compose profile that turns the poller on by accident.
 - A re-delivered job is a no-op — an existing width/format pair is reused, and
   widths above the source are dropped rather than upscaled.
 - A variant is served by `GET /cms/media/file/<key>` like any other media,
