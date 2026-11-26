@@ -47,9 +47,9 @@ export class PagesService {
     private readonly revalidate: RevalidateService,
   ) {}
 
-  async getPublicPages(): Promise<PageListResponse> {
+  async getPublicPages(preview = false): Promise<PageListResponse> {
     const docs = await this.pageModel
-      .find({ isActive: true })
+      .find(preview ? {} : { isActive: true })
       .sort({ slug: 1 })
       .lean<PageDocumentLike[]>()
       .exec();
@@ -58,15 +58,17 @@ export class PagesService {
     return { data };
   }
 
-  async getPublicPageBySlug(slug: string): Promise<Page> {
+  async getPublicPageBySlug(slug: string, preview = false): Promise<Page> {
     const cacheKey = this.cacheService.pageSlugKey(slug);
-    const cached = await this.cacheService.get<Page>(cacheKey);
-    if (cached) {
-      return cached;
+    if (!preview) {
+      const cached = await this.cacheService.get<Page>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     const doc = await this.pageModel
-      .findOne({ slug, isActive: true })
+      .findOne(preview ? { slug } : { slug, isActive: true })
       .lean<PageDocumentLike | null>()
       .exec();
 
@@ -78,7 +80,9 @@ export class PagesService {
     }
 
     const page = this.toPagePayload(doc);
-    await this.cacheService.set(cacheKey, page);
+    if (!preview) {
+      await this.cacheService.set(cacheKey, page);
+    }
     return page;
   }
 

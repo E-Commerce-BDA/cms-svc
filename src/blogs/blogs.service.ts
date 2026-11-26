@@ -104,9 +104,12 @@ export class BlogsService {
     category?: string,
     cursor?: string,
     limitStr?: number,
+    preview = false,
   ): Promise<BlogListResponse> {
     const limit = Math.min(Math.max(1, limitStr || 10), 50);
-    const query: FilterQuery<BlogModel> = { status: 'published' };
+    // A verified preview token relaxes the visibility filter only; there is no
+    // cache on the list path and no write surface behind the public controller.
+    const query: FilterQuery<BlogModel> = preview ? {} : { status: 'published' };
 
     if (category) {
       const isObjectId = Types.ObjectId.isValid(category);
@@ -233,15 +236,17 @@ export class BlogsService {
     };
   }
 
-  async getPublicBlogBySlug(slug: string): Promise<Blog> {
+  async getPublicBlogBySlug(slug: string, preview = false): Promise<Blog> {
     const cacheKey = this.cacheService.blogSlugKey(slug);
-    const cached = await this.cacheService.get<Blog>(cacheKey);
-    if (cached) {
-      return cached;
+    if (!preview) {
+      const cached = await this.cacheService.get<Blog>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     const doc = await this.blogModel
-      .findOne({ slug, status: 'published' })
+      .findOne(preview ? { slug } : { slug, status: 'published' })
       .lean<BlogDocumentLike | null>()
       .exec();
 
@@ -253,7 +258,9 @@ export class BlogsService {
     }
 
     const blog = this.toBlogPayload(doc);
-    await this.cacheService.set(cacheKey, blog);
+    if (!preview) {
+      await this.cacheService.set(cacheKey, blog);
+    }
     return blog;
   }
 

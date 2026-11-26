@@ -1,9 +1,6 @@
 import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
-import {
-  type Footer,
-  type FooterResponse,
-  updateFooterSchema,
-} from '@ecom/contracts';
+import { type Footer, updateFooterSchema } from '@ecom/contracts';
+import type { PublicFooterResponse } from '../common/public-state.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -15,14 +12,14 @@ export class FooterController {
   constructor(private readonly footerService: FooterService) {}
 
   @Get('footer')
-  async getFooter(): Promise<FooterResponse> {
+  async getFooter(): Promise<PublicFooterResponse> {
     return this.footerService.getFooter();
   }
 
   @Get('admin/footer')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  async getAdminFooter(): Promise<FooterResponse> {
+  async getAdminFooter(): Promise<PublicFooterResponse> {
     return this.footerService.getFooter();
   }
 
@@ -31,7 +28,7 @@ export class FooterController {
   @Roles('admin')
   async updateFooter(
     @Body(new ZodValidationPipe(updateFooterSchema)) body: unknown,
-  ): Promise<FooterResponse> {
+  ): Promise<PublicFooterResponse> {
     return this.footerService.updateFooter(body as Footer);
   }
 }

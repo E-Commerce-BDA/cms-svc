@@ -86,7 +86,34 @@ describe('FooterService', () => {
     // an empty document, and reading must never 404 before the first publish.
     expect(res.footer).toEqual({});
     expect(res.version).toBe(1);
+    expect(res.configured).toBe(false);
     expect(cacheService.set).toHaveBeenCalledWith('cms:footer', res);
+  });
+
+  it('reports configured:true once a footer row exists', async () => {
+    const cacheService = {
+      footerKey: vi.fn().mockReturnValue('cms:footer:v2'),
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    const footerModel = {
+      findOne: vi.fn().mockReturnValue({
+        lean: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ footer: {} }),
+        }),
+      }),
+    };
+    const service = buildService(
+      footerModel as any,
+      { getVersion: vi.fn().mockResolvedValue(1) } as any,
+      cacheService as any,
+    );
+
+    expect(await service.getFooter()).toEqual({
+      footer: {},
+      version: 1,
+      configured: true,
+    });
   });
 
   it('updates the footer, bumps revision, invalidates cache, emits event and revalidates', async () => {
@@ -110,7 +137,7 @@ describe('FooterService', () => {
     );
 
     const res = await service.updateFooter(sampleFooter);
-    expect(res).toEqual({ footer: sampleFooter, version: 9 });
+    expect(res).toEqual({ footer: sampleFooter, version: 9, configured: true });
     expect(footerModel.findOneAndUpdate).toHaveBeenCalledWith(
       { scope: 'footer' },
       { $set: { footer: sampleFooter } },

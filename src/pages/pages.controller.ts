@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,6 +19,7 @@ import {
   type UpdatePage,
   updatePageSchema,
 } from '@ecom/contracts';
+import { PreviewGuard, type PreviewRequest } from '../preview/preview.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -29,15 +31,21 @@ export class PagesController {
   constructor(private readonly pagesService: PagesService) {}
 
   @Get('pages')
-  async getPublicPages(): Promise<PageListResponse> {
-    return this.pagesService.getPublicPages();
+  @UseGuards(PreviewGuard)
+  async getPublicPages(@Req() request: PreviewRequest): Promise<PageListResponse> {
+    return this.pagesService.getPublicPages(request.preview === true);
   }
 
   @Get('pages/:slug')
+  @UseGuards(PreviewGuard)
   async getPublicPageBySlug(
     @Param('slug') slug: string,
+    @Req() request: PreviewRequest,
   ): Promise<{ page: Page }> {
-    const page = await this.pagesService.getPublicPageBySlug(slug);
+    const page = await this.pagesService.getPublicPageBySlug(
+      slug,
+      request.preview === true,
+    );
     return { page };
   }
 

@@ -56,7 +56,7 @@ describe('SectionsService', () => {
 
   it('serves public sections from cache when available', async () => {
     const cacheService = {
-      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
       get: vi.fn().mockResolvedValue({
         sections: [sampleSection],
         version: 3,
@@ -84,7 +84,7 @@ describe('SectionsService', () => {
 
   it('queries mongo, filters isActive, and populates cache on cache miss', async () => {
     const cacheService = {
-      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
     };
@@ -92,6 +92,9 @@ describe('SectionsService', () => {
     const sortMock = vi.fn().mockReturnValue({ lean: () => ({ exec: leanMock }) });
     const sectionModel = {
       find: vi.fn().mockReturnValue({ sort: sortMock }),
+      countDocuments: vi.fn().mockReturnValue({
+        exec: vi.fn().mockResolvedValue(1),
+      }),
     };
     const revisionService = { getVersion: vi.fn().mockResolvedValue(4) };
     const eventsService = { publishCmsUpdated: vi.fn() };
@@ -105,11 +108,94 @@ describe('SectionsService', () => {
 
     const res = await service.getPublicSections('homepage');
     expect(res.version).toBe(4);
+    expect(res.state).toBe('published');
     expect(sectionModel.find).toHaveBeenCalledWith({
       pageKey: 'homepage',
       isActive: true,
     });
-    expect(cacheService.set).toHaveBeenCalledWith('cms:sections:homepage', res);
+    expect(sectionModel.countDocuments).toHaveBeenCalledWith({
+      pageKey: 'homepage',
+    });
+    expect(cacheService.set).toHaveBeenCalledWith(
+      'cms:sections:v2:homepage',
+      res,
+    );
+  });
+
+  it.each([
+    { label: 'missing', total: 0, docs: [], expected: 'missing' },
+    { label: 'empty', total: 2, docs: [], expected: 'empty' },
+    {
+      label: 'published',
+      total: 2,
+      docs: [sampleSection],
+      expected: 'published',
+    },
+  ])(
+    'reports state $label for public sections',
+    async ({ total, docs, expected }) => {
+      const cacheService = {
+        sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue(undefined),
+      };
+      const sectionModel = {
+        find: vi.fn().mockReturnValue({
+          sort: () => ({
+            lean: () => ({ exec: vi.fn().mockResolvedValue(docs) }),
+          }),
+        }),
+        countDocuments: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(total),
+        }),
+      };
+      const service = buildService(
+        sectionModel as any,
+        { getVersion: vi.fn().mockResolvedValue(1) } as any,
+        cacheService as any,
+        {} as any,
+      );
+
+      const res = await service.getPublicSections('homepage');
+      expect(res.state).toBe(expected);
+    },
+  );
+
+  it('preview reads all sections, bypasses cache, and still reports the public state', async () => {
+    const inactive = { ...sampleSection, isActive: false };
+    const cacheService = {
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
+      get: vi.fn().mockResolvedValue({
+        sections: [sampleSection],
+        version: 1,
+        state: 'published',
+      }),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    const sectionModel = {
+      find: vi.fn().mockReturnValue({
+        sort: () => ({
+          lean: () => ({ exec: vi.fn().mockResolvedValue([inactive]) }),
+        }),
+      }),
+      countDocuments: vi.fn().mockReturnValue({
+        exec: vi.fn().mockResolvedValue(1),
+      }),
+    };
+    const service = buildService(
+      sectionModel as any,
+      { getVersion: vi.fn().mockResolvedValue(5) } as any,
+      cacheService as any,
+      {} as any,
+    );
+
+    const res = await service.getPublicSections('homepage', true);
+    expect(res.sections).toEqual([inactive]);
+    expect(res.state).toBe('empty');
+    expect(res.version).toBe(5);
+    expect(sectionModel.find).toHaveBeenCalledWith({ pageKey: 'homepage' });
+    expect(cacheService.get).not.toHaveBeenCalled();
+    expect(cacheService.set).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate section key on creation', async () => {
@@ -200,7 +286,7 @@ describe('SectionsService', () => {
     };
     const revisionService = { bumpVersion: vi.fn().mockResolvedValue(5) };
     const cacheService = {
-      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
       del: vi.fn().mockResolvedValue(undefined),
     };
     const eventsService = { publishCmsUpdated: vi.fn().mockResolvedValue(undefined) };
@@ -239,7 +325,7 @@ describe('SectionsService', () => {
     expect(revisionService.bumpVersion).toHaveBeenCalledWith({
       session: fakeSession,
     });
-    expect(cacheService.del).toHaveBeenCalledWith('cms:sections:homepage');
+    expect(cacheService.del).toHaveBeenCalledWith('cms:sections:v2:homepage');
     // cms-008: a reorder changes the page order, so the page tag is dropped.
     expect(revalidate.revalidate).toHaveBeenCalledWith(['cms:sections:homepage']);
     expect(outbox.record).toHaveBeenCalledWith(fakeSession, {
@@ -279,7 +365,7 @@ describe('SectionsService', () => {
 
     const revisionService = { bumpVersion: vi.fn().mockResolvedValue(8) };
     const cacheService = {
-      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
       sectionKey: vi.fn().mockReturnValue('cms:section:home-banner'),
       del: vi.fn().mockResolvedValue(undefined),
     };
@@ -300,7 +386,7 @@ describe('SectionsService', () => {
     });
 
     expect(saveMock).toHaveBeenCalledWith({ session: fakeSession });
-    expect(cacheService.del).toHaveBeenCalledWith('cms:sections:homepage');
+    expect(cacheService.del).toHaveBeenCalledWith('cms:sections:v2:homepage');
     expect(cacheService.del).toHaveBeenCalledWith('cms:section:home-banner');
     // cms-008: the page tag the storefront home subscribes to.
     expect(revalidate.revalidate).toHaveBeenCalledWith([
@@ -352,7 +438,7 @@ describe('SectionsService', () => {
       }),
     };
     const cacheService = {
-      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
       sectionKey: vi.fn().mockReturnValue('cms:section:home-hero'),
       del: vi.fn().mockResolvedValue(undefined),
     };
@@ -389,7 +475,7 @@ describe('SectionsService', () => {
       }),
     };
     const cacheService = {
-      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:homepage'),
+      sectionsPageKey: vi.fn().mockReturnValue('cms:sections:v2:homepage'),
       sectionKey: vi.fn().mockReturnValue('cms:section:home-hero'),
       del: vi.fn().mockResolvedValue(undefined),
     };

@@ -68,6 +68,60 @@ describe('SettingsService', () => {
     expect(cmsSettingsModel.findOne).not.toHaveBeenCalled();
   });
 
+  it('reports configured:false for a never-written global theme and page key', async () => {
+    const cacheService = {
+      settingsGlobalKey: vi.fn().mockReturnValue('cms:settings:v2:global'),
+      pageSettingsKey: vi.fn().mockReturnValue('cms:page-settings:v2:signin'),
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    const model = {
+      findOne: vi.fn().mockReturnValue({
+        lean: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue(null),
+        }),
+      }),
+    };
+    const service = buildService(
+      model as any,
+      model as any,
+      { getVersion: vi.fn().mockResolvedValue(1) } as any,
+      cacheService as any,
+    );
+
+    const globalRes = await service.getGlobalTheme();
+    const pageRes = await service.getPageSettings('signin');
+    expect(globalRes).toEqual({ theme: {}, version: 1, configured: false });
+    expect(pageRes).toEqual({ settings: {}, version: 1, configured: false });
+  });
+
+  it('reports configured:true once a document exists, even if the payload is empty', async () => {
+    const cacheService = {
+      settingsGlobalKey: vi.fn().mockReturnValue('cms:settings:v2:global'),
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    const model = {
+      findOne: vi.fn().mockReturnValue({
+        lean: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ theme: {} }),
+        }),
+      }),
+    };
+    const service = buildService(
+      model as any,
+      {} as any,
+      { getVersion: vi.fn().mockResolvedValue(2) } as any,
+      cacheService as any,
+    );
+
+    expect(await service.getGlobalTheme()).toEqual({
+      theme: {},
+      version: 2,
+      configured: true,
+    });
+  });
+
   it('updates global theme, bumps revision, invalidates cache, and emits event', async () => {
     const cmsSettingsModel = {
       findOneAndUpdate: vi.fn().mockReturnValue({

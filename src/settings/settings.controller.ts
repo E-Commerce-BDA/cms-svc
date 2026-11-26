@@ -9,11 +9,13 @@ import {
 import {
   type AuthSettings,
   authSettingsSchema,
-  type PageSettingsResponse,
-  type ThemeResponse,
   type ThemeSettings,
   themeSettingsSchema,
 } from '@ecom/contracts';
+import type {
+  PublicPageSettingsResponse,
+  PublicThemeResponse,
+} from '../common/public-state.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -25,14 +27,14 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get('settings/global')
-  async getGlobalTheme(): Promise<ThemeResponse> {
+  async getGlobalTheme(): Promise<PublicThemeResponse> {
     return this.settingsService.getGlobalTheme();
   }
 
   @Get('admin/settings/global')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  async getAdminGlobalTheme(): Promise<ThemeResponse> {
+  async getAdminGlobalTheme(): Promise<PublicThemeResponse> {
     return this.settingsService.getGlobalTheme();
   }
 
@@ -41,14 +43,14 @@ export class SettingsController {
   @Roles('admin')
   async updateGlobalTheme(
     @Body(new ZodValidationPipe(themeSettingsSchema)) body: unknown,
-  ): Promise<ThemeResponse> {
+  ): Promise<PublicThemeResponse> {
     return this.settingsService.updateGlobalTheme(body as ThemeSettings);
   }
 
   @Get('settings/page/:pageKey')
   async getPageSettings(
     @Param('pageKey') pageKey: string,
-  ): Promise<PageSettingsResponse> {
+  ): Promise<PublicPageSettingsResponse> {
     return this.settingsService.getPageSettings(pageKey);
   }
 
@@ -57,7 +59,7 @@ export class SettingsController {
   @Roles('admin')
   async getAdminPageSettings(
     @Param('pageKey') pageKey: string,
-  ): Promise<PageSettingsResponse> {
+  ): Promise<PublicPageSettingsResponse> {
     return this.settingsService.getPageSettings(pageKey);
   }
 
@@ -67,7 +69,7 @@ export class SettingsController {
   async updatePageSettings(
     @Param('pageKey') pageKey: string,
     @Body(new ZodValidationPipe(authSettingsSchema)) body: unknown,
-  ): Promise<PageSettingsResponse> {
+  ): Promise<PublicPageSettingsResponse> {
     return this.settingsService.updatePageSettings(
       pageKey,
       body as AuthSettings,

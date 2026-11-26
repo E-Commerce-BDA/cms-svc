@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -20,6 +21,8 @@ import {
   sectionReorderSchema,
   sectionSchema,
 } from '@ecom/contracts';
+import type { PublicSectionsResponse } from '../common/public-state.js';
+import { PreviewGuard, type PreviewRequest } from '../preview/preview.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -31,10 +34,15 @@ export class SectionsController {
   constructor(private readonly sectionsService: SectionsService) {}
 
   @Get('sections')
+  @UseGuards(PreviewGuard)
   async getPublicSections(
     @Query('pageKey') pageKey: string = 'homepage',
-  ): Promise<SectionListResponse> {
-    return this.sectionsService.getPublicSections(pageKey);
+    @Req() request: PreviewRequest,
+  ): Promise<PublicSectionsResponse> {
+    return this.sectionsService.getPublicSections(
+      pageKey,
+      request.preview === true,
+    );
   }
 
   @Get('admin/sections')

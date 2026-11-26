@@ -119,6 +119,94 @@ GET /api/v1/cms/media/signed/<key>?exp=…&sig=…    (no credential)
 - Default lifetime is 5 minutes, capped at 1 hour. `expiresIn` must be a
   positive number of seconds.
 
+## Public state metadata (`cms-012`)
+
+Four public reads used to answer `200 {}` both before an admin ever saved
+anything and after an admin cleared everything. They now carry one additive
+field; no existing field is renamed, removed or retyped:
+
+| Endpoint | Added field | Meaning |
+|---|---|---|
+| `GET /api/v1/cms/settings/global` | `configured: boolean` | a global settings row exists |
+| `GET /api/v1/cms/settings/page/:pageKey` | `configured: boolean` | a row exists for that page key |
+| `GET /api/v1/cms/navigation` | `configured: boolean` | a navbar row exists |
+| `GET /api/v1/cms/footer` | `configured: boolean` | a footer row exists |
+| `GET /api/v1/cms/sections?pageKey=…` | `state: "missing" \| "empty" \| "published"` | no rows / rows but none active / at least one active |
+
+`configured` is document existence, not payload emptiness: an admin who clears
+every key still has `configured: true` with an empty `theme`/`settings`/`navbar`/
+`footer` object. That is the whole point — the storefront can tell "nobody set
+this up" from "someone deliberately reset it". For sections, `missing` is an
+unknown page key, `empty` is authored-but-all-inactive, and `published` is the
+normal case. `state` keeps its public meaning on a preview read, so an admin can
+see draft rows while still being told that shoppers see nothing.
+
+Exact bodies:
+
+```jsonc
+// GET /cms/settings/global
+{ "theme": {}, "version": 1, "configured": false }
+// GET /cms/settings/page/<key>
+{ "settings": {}, "version": 1, "configured": false }
+// GET /cms/navigation
+{ "navbar": {}, "version": 1, "configured": false }
+// GET /cms/footer
+{ "footer": {}, "version": 1, "configured": false }
+// GET /cms/sections?pageKey=<key>
+{ "sections": [], "version": 1, "state": "missing" }
+```
+
+The Redis namespaces for these five bodies moved to a `v2` segment so a body
+cached before a deploy cannot be served afterwards without the metadata. Old
+keys expire on their own; no migration of Redis data is needed.
+
+**Reader compatibility.** These fields are additive at the HTTP level, but
+`@ecom/contracts` 2.0.0 declares `footerResponseSchema` and
+`sectionListEnvelopeSchema` as `.strict()`; a reader pinned to that version
+rejects the new top-level key instead of ignoring it. Before this service is
+deployed, a storefront reader must move to a contracts release that declares
+these two fields optional (or otherwise tolerate unknown keys). CMS does not
+change a pinned dependency or another repo. This is the one adoption ordering
+that cannot be completed inside `cms-svc`, and it is called out here rather
+than hidden behind "additive".
+
+## Preview capability (`cms-012`)
+
+An admin can inspect inactive sections, draft blogs and inactive pages without
+publishing:
+
+```
+GET /api/v1/cms/admin/preview-token?expiresIn=300   (admin only)
+  → { token: "v1.<exp-unix-seconds>.<hmac-hex>", expiresAt: "<ISO>" }
+GET /api/v1/cms/sections?pageKey=home&preview=<token>
+GET /api/v1/cms/blogs?preview=<token>
+GET /api/v1/cms/blogs/<slug>?preview=<token>
+GET /api/v1/cms/pages/<slug>?preview=<token>
+  (or send x-preview-token: <token> instead of ?preview=)
+```
+
+- `expiresIn` is a positive number of seconds; default `300`, capped at `3600`.
+  A malformed value is `400 VALIDATION_FAILED`. It is an absolute expiry: a
+  token stops working at `exp`, with no clock tolerance.
+- Signature: `HMAC-SHA256(key, "cms-preview-token:v1\n<exp>")`, lowercase hex,
+  where `key = HMAC-SHA256(JWT_SECRET, "cms-preview-token:v1")`. Domain
+  separation keeps a preview token from being replayed as an access token or
+  as a media signature. No new deployment variable, no user claims in the token.
+- A missing, expired, malformed or wrongly signed token is **ignored**, never
+  rejected: the read falls back to exactly today's published-only behaviour.
+  Either source (`?preview` or the header) may carry a valid token.
+- A verified token relaxes read filters only. It cannot call an admin route,
+  change a document, or mint another token. Public routes still expose no
+  writes; `POST /api/v1/cms/sections?preview=…` is simply not routed.
+- Preview reads bypass Redis in both directions and answer
+  `Cache-Control: private, no-store`, so drafts never become cached published
+  pages. Every other read keeps its normal cache behaviour.
+
+The local dev database gained `cms_sections` index
+`{ pageKey: 1, isActive: 1, sortOrder: 1 }`; it serves both the public
+`pageKey + isActive` filter and the preview `pageKey` filter. `autoIndex`
+creates it in test/development; no document rewrite is needed.
+
 ## Telling the storefront (`cms-007`)
 
 The storefront caches CMS reads in Next's Data Cache, which lives in its own

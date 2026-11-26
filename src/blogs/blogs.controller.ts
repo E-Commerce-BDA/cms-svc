@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -23,6 +24,7 @@ import {
   type UpdateBlog,
   updateBlogSchema,
 } from '@ecom/contracts';
+import { PreviewGuard, type PreviewRequest } from '../preview/preview.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -34,23 +36,31 @@ export class BlogsController {
   constructor(private readonly blogsService: BlogsService) {}
 
   @Get('blogs')
+  @UseGuards(PreviewGuard)
   async getPublicBlogs(
     @Query('category') category?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Req() request?: PreviewRequest,
   ): Promise<BlogListResponse> {
     return this.blogsService.getPublicBlogs(
       category,
       cursor,
       limit ? Number(limit) : undefined,
+      request?.preview === true,
     );
   }
 
   @Get('blogs/:slug')
+  @UseGuards(PreviewGuard)
   async getPublicBlogBySlug(
     @Param('slug') slug: string,
+    @Req() request: PreviewRequest,
   ): Promise<{ blog: Blog }> {
-    const blog = await this.blogsService.getPublicBlogBySlug(slug);
+    const blog = await this.blogsService.getPublicBlogBySlug(
+      slug,
+      request.preview === true,
+    );
     return { blog };
   }
 

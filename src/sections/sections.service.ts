@@ -14,6 +14,10 @@ import {
   sectionSchema,
 } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
+import {
+  resolveSectionState,
+  type PublicSectionsResponse,
+} from '../common/public-state.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
 import {
@@ -35,24 +39,44 @@ export class SectionsService {
     private readonly revalidate: RevalidateService,
   ) {}
 
-  async getPublicSections(pageKey: string): Promise<SectionListResponse> {
+  async getPublicSections(
+    pageKey: string,
+    preview = false,
+  ): Promise<PublicSectionsResponse> {
     const cacheKey = this.cacheService.sectionsPageKey(pageKey);
-    const cached = await this.cacheService.get<SectionListResponse>(cacheKey);
-    if (cached) {
-      return cached;
+    if (!preview) {
+      const cached = await this.cacheService.get<PublicSectionsResponse>(
+        cacheKey,
+      );
+      if (cached) {
+        return cached;
+      }
     }
 
+    // Preview reads bypass Redis in both directions: a draft list must never
+    // become the cached public answer, nor be served from a published cache.
     const docs = await this.sectionModel
-      .find({ pageKey, isActive: true })
+      .find(preview ? { pageKey } : { pageKey, isActive: true })
       .sort({ sortOrder: 1 })
       .lean()
       .exec();
 
+    // `state` describes what shoppers see even on a preview read, so an admin
+    // can tell "no published sections" from "no sections at all" while looking
+    // at the draft rows the token just admitted.
+    const total = await this.sectionModel.countDocuments({ pageKey }).exec();
+    const active = preview
+      ? docs.filter((doc) => doc.isActive === true).length
+      : docs.length;
+    const state = resolveSectionState(total, active);
+
     const version = await this.revisionService.getVersion();
     const sections: Section[] = docs.map((doc) => this.toSectionPayload(doc));
+    const response: PublicSectionsResponse = { sections, version, state };
 
-    const response: SectionListResponse = { sections, version };
-    await this.cacheService.set(cacheKey, response);
+    if (!preview) {
+      await this.cacheService.set(cacheKey, response);
+    }
     return response;
   }
 

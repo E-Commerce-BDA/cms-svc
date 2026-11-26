@@ -16,6 +16,7 @@ import { BlogsModule } from './blogs/blogs.module.js';
 import { MediaModule } from './media/media.module.js';
 import { MediaSignedModule } from './media/media-signed.module.js';
 import { RevalidateModule } from './revalidate/revalidate.module.js';
+import { PreviewModule } from './preview/preview.module.js';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { RevalidateModule } from './revalidate/revalidate.module.js';
     BlogsModule,
     MediaModule,
     MediaSignedModule,
+    PreviewModule,
   ],
 })
 export class AppModule {}

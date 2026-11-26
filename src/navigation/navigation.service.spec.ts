@@ -61,6 +61,35 @@ describe('NavigationService', () => {
     expect(navModel.findOne).not.toHaveBeenCalled();
   });
 
+  it.each([true, false])(
+    'reports configured:%s from document existence on a cache miss',
+    async (exists) => {
+      const cacheService = {
+        navigationKey: vi.fn().mockReturnValue('cms:nav:v2'),
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue(undefined),
+      };
+      const navModel = {
+        findOne: vi.fn().mockReturnValue({
+          lean: vi.fn().mockReturnValue({
+            exec: vi.fn().mockResolvedValue(exists ? { navbar: {} } : null),
+          }),
+        }),
+      };
+      const service = buildService(
+        navModel as any,
+        { getVersion: vi.fn().mockResolvedValue(1) } as any,
+        cacheService as any,
+      );
+
+      expect(await service.getNavigation()).toEqual({
+        navbar: {},
+        version: 1,
+        configured: exists,
+      });
+    },
+  );
+
   it('updates navigation, bumps revision, invalidates cache, and emits event', async () => {
     const navModel = {
       findOneAndUpdate: vi.fn().mockReturnValue({

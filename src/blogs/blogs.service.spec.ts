@@ -206,6 +206,60 @@ describe('BlogsService', () => {
       expect(cacheService.set).toHaveBeenCalled();
     });
 
+    it('preview by slug admits a draft and bypasses the published cache', async () => {
+      const draft = { ...sampleBlog, status: 'draft' };
+      const cacheService = {
+        blogSlugKey: vi.fn().mockReturnValue('cms:blog:draft-post'),
+        get: vi.fn().mockResolvedValue({ slug: 'stale' }),
+        set: vi.fn().mockResolvedValue(undefined),
+      };
+      const blogModel = {
+        findOne: vi.fn().mockReturnValue({
+          lean: vi.fn().mockReturnValue({
+            exec: vi.fn().mockResolvedValue(draft),
+          }),
+        }),
+      };
+      const service = buildService(
+        blogModel as never,
+        {} as never,
+        cacheService as never,
+        {} as never,
+      );
+
+      const res = await service.getPublicBlogBySlug('draft-post', true);
+      expect(res.status).toBe('draft');
+      expect(blogModel.findOne).toHaveBeenCalledWith({ slug: 'draft-post' });
+      expect(cacheService.get).not.toHaveBeenCalled();
+      expect(cacheService.set).not.toHaveBeenCalled();
+    });
+
+    it('preview list drops the published status filter', async () => {
+      const blogModel = {
+        find: vi.fn().mockReturnValue({
+          sort: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              lean: vi.fn().mockReturnValue({
+                exec: vi.fn().mockResolvedValue([
+                  { ...sampleBlog, status: 'draft' },
+                ]),
+              }),
+            }),
+          }),
+        }),
+      };
+      const service = buildService(
+        blogModel as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+
+      const res = await service.getPublicBlogs(undefined, undefined, 10, true);
+      expect(res.data[0].status).toBe('draft');
+      expect(blogModel.find).toHaveBeenCalledWith({});
+    });
+
     it('throws NotFoundException when blog not found or draft', async () => {
       const cacheService = {
         blogSlugKey: vi.fn().mockReturnValue('cms:blog:missing'),

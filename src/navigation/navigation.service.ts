@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
-import type { NavResponse, NavSettings } from '@ecom/contracts';
+import type { NavSettings } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
+import type { PublicNavResponse } from '../common/public-state.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
 import {
@@ -27,9 +28,9 @@ export class NavigationService {
     private readonly revalidate: RevalidateService,
   ) {}
 
-  async getNavigation(): Promise<NavResponse> {
+  async getNavigation(): Promise<PublicNavResponse> {
     const cacheKey = this.cacheService.navigationKey();
-    const cached = await this.cacheService.get<NavResponse>(cacheKey);
+    const cached = await this.cacheService.get<PublicNavResponse>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -40,16 +41,17 @@ export class NavigationService {
       .exec();
 
     const version = await this.revisionService.getVersion();
-    const response: NavResponse = {
+    const response: PublicNavResponse = {
       navbar: (doc?.navbar as NavSettings) ?? {},
       version,
+      configured: doc !== null,
     };
 
     await this.cacheService.set(cacheKey, response);
     return response;
   }
 
-  async updateNavigation(navbar: NavSettings): Promise<NavResponse> {
+  async updateNavigation(navbar: NavSettings): Promise<PublicNavResponse> {
     const version = await this.transactions.run(async (session) => {
       await this.navModel
         .findOneAndUpdate(
@@ -74,6 +76,6 @@ export class NavigationService {
     // The header is on every page, so this tag is the widest one we own.
     await this.revalidate.revalidate([storefrontTags.navigation]);
 
-    return { navbar, version };
+    return { navbar, version, configured: true };
   }
 }

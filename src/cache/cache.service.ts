@@ -5,6 +5,10 @@ import { RedisService } from '../redis/redis.service.js';
 export class CacheService {
   private readonly logger = new Logger(CacheService.name);
   public static readonly DEFAULT_TTL_SECONDS = 300;
+  // cms-012 added `configured` / `state` to these bodies. A new namespace
+  // keeps a body cached before the deploy from being served after it: old keys
+  // simply expire instead of being read as if they had the new metadata.
+  private static readonly PUBLIC_SHAPE = 'v2';
 
   constructor(private readonly redisService: RedisService) {}
 
@@ -13,23 +17,23 @@ export class CacheService {
   }
 
   sectionsPageKey(pageKey: string): string {
-    return `cms:sections:${pageKey}`;
+    return `cms:sections:${CacheService.PUBLIC_SHAPE}:${pageKey}`;
   }
 
   settingsGlobalKey(): string {
-    return 'cms:settings:global';
+    return `cms:settings:${CacheService.PUBLIC_SHAPE}:global`;
   }
 
   navigationKey(): string {
-    return 'cms:nav';
+    return `cms:nav:${CacheService.PUBLIC_SHAPE}`;
   }
 
   footerKey(): string {
-    return 'cms:footer';
+    return `cms:footer:${CacheService.PUBLIC_SHAPE}`;
   }
 
   pageSettingsKey(pageKey: string): string {
-    return `cms:page-settings:${pageKey}`;
+    return `cms:page-settings:${CacheService.PUBLIC_SHAPE}:${pageKey}`;
   }
 
   pageSlugKey(slug: string): string {

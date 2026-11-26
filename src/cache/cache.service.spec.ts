@@ -5,10 +5,10 @@ describe('CacheService', () => {
   it('constructs predictable key namespaces', () => {
     const service = new CacheService({} as any);
     expect(service.sectionKey('hero')).toBe('cms:section:hero');
-    expect(service.sectionsPageKey('home')).toBe('cms:sections:home');
-    expect(service.settingsGlobalKey()).toBe('cms:settings:global');
-    expect(service.navigationKey()).toBe('cms:nav');
-    expect(service.pageSettingsKey('auth')).toBe('cms:page-settings:auth');
+    expect(service.sectionsPageKey('home')).toBe('cms:sections:v2:home');
+    expect(service.settingsGlobalKey()).toBe('cms:settings:v2:global');
+    expect(service.navigationKey()).toBe('cms:nav:v2');
+    expect(service.pageSettingsKey('auth')).toBe('cms:page-settings:v2:auth');
     expect(service.pageSlugKey('about')).toBe('cms:page:about');
     expect(service.blogSlugKey('lookbook')).toBe('cms:blog:lookbook');
   });

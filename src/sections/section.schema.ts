@@ -43,3 +43,6 @@ export class SectionModel {
 
 export const SectionSchema = SchemaFactory.createForClass(SectionModel);
 SectionSchema.index({ pageKey: 1, sortOrder: 1 });
+// cms-012: public reads filter by pageKey + isActive and sort by sortOrder;
+// preview reads drop only the isActive term. One compound index serves both.
+SectionSchema.index({ pageKey: 1, isActive: 1, sortOrder: 1 });

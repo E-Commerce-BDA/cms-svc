@@ -3,11 +3,13 @@ import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import type {
   AuthSettings,
-  PageSettingsResponse,
-  ThemeResponse,
   ThemeSettings,
 } from '@ecom/contracts';
 import { CacheService } from '../cache/cache.service.js';
+import type {
+  PublicPageSettingsResponse,
+  PublicThemeResponse,
+} from '../common/public-state.js';
 import { MongoTransactions } from '../db/mongo-tx.js';
 import { CmsOutbox } from '../outbox/cms-outbox.js';
 import {
@@ -38,9 +40,9 @@ export class SettingsService {
     private readonly revalidate: RevalidateService,
   ) {}
 
-  async getGlobalTheme(): Promise<ThemeResponse> {
+  async getGlobalTheme(): Promise<PublicThemeResponse> {
     const cacheKey = this.cacheService.settingsGlobalKey();
-    const cached = await this.cacheService.get<ThemeResponse>(cacheKey);
+    const cached = await this.cacheService.get<PublicThemeResponse>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -51,16 +53,19 @@ export class SettingsService {
       .exec();
 
     const version = await this.revisionService.getVersion();
-    const response: ThemeResponse = {
+    const response: PublicThemeResponse = {
       theme: (doc?.theme as ThemeSettings) ?? {},
       version,
+      // A write creates the row even when the admin clears every key, so
+      // "never configured" and "configured as empty" stay distinguishable.
+      configured: doc !== null,
     };
 
     await this.cacheService.set(cacheKey, response);
     return response;
   }
 
-  async updateGlobalTheme(theme: ThemeSettings): Promise<ThemeResponse> {
+  async updateGlobalTheme(theme: ThemeSettings): Promise<PublicThemeResponse> {
     const version = await this.transactions.run(async (session) => {
       await this.cmsSettingsModel
         .findOneAndUpdate(
@@ -86,12 +91,14 @@ export class SettingsService {
     // the one copy of this content that cms-svc cannot delete by itself.
     await this.revalidate.revalidate([storefrontTags.globalSettings]);
 
-    return { theme, version };
+    return { theme, version, configured: true };
   }
 
-  async getPageSettings(pageKey: string): Promise<PageSettingsResponse> {
+  async getPageSettings(pageKey: string): Promise<PublicPageSettingsResponse> {
     const cacheKey = this.cacheService.pageSettingsKey(pageKey);
-    const cached = await this.cacheService.get<PageSettingsResponse>(cacheKey);
+    const cached = await this.cacheService.get<PublicPageSettingsResponse>(
+      cacheKey,
+    );
     if (cached) {
       return cached;
     }
@@ -102,9 +109,10 @@ export class SettingsService {
       .exec();
 
     const version = await this.revisionService.getVersion();
-    const response: PageSettingsResponse = {
+    const response: PublicPageSettingsResponse = {
       settings: (doc?.settings as AuthSettings) ?? {},
       version,
+      configured: doc !== null,
     };
 
     await this.cacheService.set(cacheKey, response);
@@ -114,7 +122,7 @@ export class SettingsService {
   async updatePageSettings(
     pageKey: string,
     settings: AuthSettings,
-  ): Promise<PageSettingsResponse> {
+  ): Promise<PublicPageSettingsResponse> {
     const version = await this.transactions.run(async (session) => {
       await this.pageSettingsModel
         .findOneAndUpdate(
@@ -140,6 +148,6 @@ export class SettingsService {
     // storefront's reader subscribes to.
     await this.revalidate.revalidate([storefrontTags.pageSettings(pageKey)]);
 
-    return { settings, version };
+    return { settings, version, configured: true };
   }
 }
