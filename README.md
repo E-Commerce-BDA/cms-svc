@@ -207,6 +207,24 @@ The local dev database gained `cms_sections` index
 `pageKey + isActive` filter and the preview `pageKey` filter. `autoIndex`
 creates it in test/development; no document rewrite is needed.
 
+## Nested theme pass-through (`cms-013`)
+
+`@ecom/contracts` 2.2.0 adds `theme.palette`, `theme.navbar`,
+`theme.filterRail`, `theme.drawer`, `theme.marquee`, `theme.grid` and the
+`theme.productCard` CTA paint keys. The admin PUT validates the body with
+`themeSettingsSchema` and writes the parsed object to `cms_settings.theme`;
+the public GET answers with that same object, plus `version` and `configured`.
+Nothing is flattened or renamed, and absence still means "inherit" — an admin
+resets one face by deleting its key, never by writing `null`. Existing 1.x and
+2.1 bodies remain valid because every added key is optional.
+
+The write keeps all three side effects: revision bump and `cms.updated` outbox
+row in one Mongo transaction, Redis invalidation, and the
+`cms:global-settings` storefront revalidation tag. A preview token stays
+read-only and cannot reach the admin PUT path (`cms-012`). No Mongo migration
+is needed: `cms_settings.theme` is a `Mixed` field, so nested keys live in the
+same document without a new index or a rewrite.
+
 ## Telling the storefront (`cms-007`)
 
 The storefront caches CMS reads in Next's Data Cache, which lives in its own
