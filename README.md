@@ -225,6 +225,57 @@ read-only and cannot reach the admin PUT path (`cms-012`). No Mongo migration
 is needed: `cms_settings.theme` is a `Mixed` field, so nested keys live in the
 same document without a new index or a rewrite.
 
+## Mega-menu navigation (`cms-014`)
+
+`@ecom/contracts` stays pinned at 2.2.0 (`navSettingsSchema`), so the CMS nav
+document carries the same optional `groups` shape the storefront resolves:
+
+```jsonc
+// PUT /cms/admin/navigation
+{
+  "shared": {
+    "links": {
+      "items": [
+        {
+          "kind": "custom", "label": "Shop", "href": "/shop",
+          "groups": [
+            {
+              "title": "Women", "columns": 2,
+              "items": [
+                { "label": "Dresses", "href": "/shop/women/dresses",
+                  "description": "New season", "badge": { "text": "New" } }
+              ],
+              "promo": { "title": "Summer edit", "href": "/promo/summer",
+                         "imageUrl": "media/summer.webp" }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+The admin PUT, the public GET and the admin GET all pass through the same
+validator. Contract limits stay owned by `navSettingsSchema`: at most 6 groups
+per link, 1–12 items per group, and 1–4 columns when `columns` is present.
+Malformed groups answer `400` with `error.code: "NAV_INVALID_GROUPS"` and a
+`details[].field` pointing at the offending array or key. Unsafe hrefs answer
+`400` with `error.code: "NAV_INVALID_HREF"`: internal links must be paths
+starting with `/` (never `//` or `/\host`, which browsers read as
+protocol-relative), external links must state `http(s)`, and scheme-less
+relative links are accepted only for legacy custom links. Everything else is
+`VALIDATION_FAILED`. Valid bodies are stored and returned unchanged — no
+flattening, no defaults written, no `null` for absent keys — so pre-2.2 bodies
+without `groups` remain valid and absence still means "inherit".
+
+The write keeps the existing semantics: one Mongo transaction with a revision
+bump and a `cms.updated` outbox row for `navigation/navbar`, Redis
+`cms:nav:v2` invalidation, and the `cms:navigation` storefront revalidation tag.
+`configured` still means a navbar row exists, and the response `version` is the
+committed revision. `cms_navigation.navbar` is a `Mixed` field, so no migration
+or index is needed.
+
 ## Telling the storefront (`cms-007`)
 
 The storefront caches CMS reads in Next's Data Cache, which lives in its own

@@ -90,6 +90,96 @@ describe('NavigationService', () => {
     },
   );
 
+  it('normalizes groups on both the cached and the stored read path', async () => {
+    const grouped: NavSettings = {
+      shared: {
+        links: {
+          items: [
+            {
+              kind: 'custom',
+              label: 'Shop',
+              href: '/shop',
+              groups: [
+                {
+                  title: 'Women',
+                  items: [{ label: 'Dresses', href: '/shop/dresses' }],
+                  promo: { title: 'Sale', href: '/sale' },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const cacheService = {
+      navigationKey: vi.fn().mockReturnValue('cms:nav:groups'),
+      get: vi.fn().mockResolvedValue({ navbar: grouped, version: 3 }),
+      set: vi.fn(),
+    };
+    const cached = await buildService(
+      {} as any,
+      {} as any,
+      cacheService as any,
+    ).getNavigation();
+    expect(cached.navbar).toEqual(grouped);
+
+    cacheService.get.mockResolvedValue(null);
+    const navModel = {
+      findOne: vi.fn().mockReturnValue({
+        lean: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ navbar: grouped }),
+        }),
+      }),
+    };
+    const stored = await buildService(
+      navModel as any,
+      { getVersion: vi.fn().mockResolvedValue(3) } as any,
+      cacheService as any,
+    ).getNavigation();
+    expect(stored.navbar).toEqual(grouped);
+    expect(stored.configured).toBe(true);
+  });
+
+  it('fails closed when a stored nav document has malformed groups', async () => {
+    const cacheService = {
+      navigationKey: vi.fn().mockReturnValue('cms:nav:bad'),
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn(),
+    };
+    const navModel = {
+      findOne: vi.fn().mockReturnValue({
+        lean: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({
+            navbar: {
+              shared: {
+                links: {
+                  items: [
+                    {
+                      kind: 'custom',
+                      label: 'Shop',
+                      href: '/shop',
+                      groups: [{ title: 'Women', items: [], columns: 9 }],
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        }),
+      }),
+    };
+    const service = buildService(
+      navModel as any,
+      { getVersion: vi.fn().mockResolvedValue(3) } as any,
+      cacheService as any,
+    );
+
+    await expect(service.getNavigation()).rejects.toMatchObject({
+      response: { code: 'NAV_INVALID_GROUPS' },
+    });
+    expect(cacheService.set).not.toHaveBeenCalled();
+  });
+
   it('updates navigation, bumps revision, invalidates cache, and emits event', async () => {
     const navModel = {
       findOneAndUpdate: vi.fn().mockReturnValue({

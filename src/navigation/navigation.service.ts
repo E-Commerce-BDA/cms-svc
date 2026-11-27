@@ -11,6 +11,7 @@ import {
   storefrontTags,
 } from '../revalidate/revalidate.service.js';
 import { RevisionService } from '../revision/revision.service.js';
+import { normalizeNavSettings } from './nav-validation.js';
 import {
   NavigationModel,
   type NavigationDocument,
@@ -32,7 +33,9 @@ export class NavigationService {
     const cacheKey = this.cacheService.navigationKey();
     const cached = await this.cacheService.get<PublicNavResponse>(cacheKey);
     if (cached) {
-      return cached;
+      // A cached body is still a nav document: validate it on the way out so a
+      // hand-edited Redis value cannot serve unsafe groups to the storefront.
+      return { ...cached, navbar: normalizeNavSettings(cached.navbar) };
     }
 
     const doc = await this.navModel
@@ -42,7 +45,7 @@ export class NavigationService {
 
     const version = await this.revisionService.getVersion();
     const response: PublicNavResponse = {
-      navbar: (doc?.navbar as NavSettings) ?? {},
+      navbar: normalizeNavSettings(doc?.navbar ?? {}),
       version,
       configured: doc !== null,
     };
@@ -52,11 +55,14 @@ export class NavigationService {
   }
 
   async updateNavigation(navbar: NavSettings): Promise<PublicNavResponse> {
+    // The controller already validates; repeat here so a direct service call
+    // (or a future route) cannot persist a document the public GET would reject.
+    const normalized = normalizeNavSettings(navbar);
     const version = await this.transactions.run(async (session) => {
       await this.navModel
         .findOneAndUpdate(
           { scope: 'navbar' },
-          { $set: { navbar } },
+          { $set: { navbar: normalized } },
           { upsert: true, returnDocument: 'after', session },
         )
         .exec();
@@ -76,6 +82,6 @@ export class NavigationService {
     // The header is on every page, so this tag is the widest one we own.
     await this.revalidate.revalidate([storefrontTags.navigation]);
 
-    return { navbar, version, configured: true };
+    return { navbar: normalized, version, configured: true };
   }
 }
